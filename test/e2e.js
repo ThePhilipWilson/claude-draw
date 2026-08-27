@@ -120,6 +120,18 @@ function sse(onEvent) {
   await post('/cancel', { id: reqs[1].data.id });
   check('skip reports cancelled', (await pending2).outcome === 'cancelled');
 
+  console.log('\n=== "send me a screenshot" ===');
+  const pending3 = post('/request', { prompt: 'mark the bug', timeout_seconds: 30 }).then((r) => r.json());
+  await sleep(400);
+  const reqs3 = events.filter((e) => e.ev === 'request');
+  check('third request pushed', reqs3.length === 3, 'requests seen=' + reqs3.length);
+  await post('/screenshot', { id: reqs3[2].data.id, note: 'the settings panel' });
+  const shot = await pending3;
+  check('screenshot ask unblocks the request', shot.outcome === 'want_screenshot', 'outcome=' + shot.outcome);
+  check('note carried back to Claude', shot.note === 'the settings panel');
+  await sleep(200);
+  check('page told to return to idle', events.filter((e) => e.ev === 'settled').length === 3);
+
   console.log('\n=== bad input ===');
   const missing = await (await post('/request', { prompt: 'x', image_path: path.join(OUT, 'nope.png') })).json();
   check('missing seed image rejected with a reason', missing.ok === false && /not found/.test(missing.error || ''));

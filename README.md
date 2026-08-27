@@ -43,6 +43,24 @@ Claude drives it through MCP. You do not run anything by hand.
 
 Type `/draw` to ask for a canvas yourself.
 
+## The canvas
+
+Pen, line, arrow, box, ellipse, fill and eraser, in six colours. Keys: `P` `L` `A` `B` `O`
+`F` `E` for tools, `1`-`6` for colour, `[` `]` for size, `Ctrl+Z` undo, `Ctrl+V` to paste an
+image, `Ctrl+Enter` to send. Images can also be dropped on the window.
+
+Fill has two ideas of an edge, and picking the tool again flips between them. **Fill: shape**
+stops only at your own marks, so an outline you drew fills solid in one tap whatever is
+underneath it. **Fill: image** also stops at edges in the picture, for colouring a region of a
+screenshot you have not outlined yourself. Either way the paint lands on the marks layer, so
+the eraser lifts it without damaging the image.
+
+Send shows you the flattened image and caption first, with `Enter` to confirm and `Esc` to go
+back. "Send me a screenshot" is the other direction: it tells Claude to capture something and
+send it back for you to annotate, which beats hunting for a file on a tablet. Whatever is in
+the caption box goes with it, so you can say what you want a picture of. "Skip" tells Claude
+you are not answering this one.
+
 ## Drawing from another device
 
 Off by default: the daemon binds loopback only, so the canvas is reachable from this machine

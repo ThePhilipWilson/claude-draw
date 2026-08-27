@@ -191,6 +191,17 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  // The user wants something to annotate and would rather Claude produced it. Settles the
+  // open request so Claude is unblocked and can come back with an image.
+  if (req.method === 'POST' && url === '/screenshot') {
+    return readBody(req, 1 << 16, (err, body) => {
+      json(res, 200, { ok: true });
+      if (active && body && String(active.id) === String(body.id)) {
+        settle({ ok: true, outcome: 'want_screenshot', note: String((body && body.note) || '').trim() });
+      }
+    });
+  }
+
   if (req.method === 'POST' && url === '/cancel') {
     return readBody(req, 1 << 16, (err, body) => {
       json(res, 200, { ok: true });

@@ -87,9 +87,19 @@ red for wrong or remove, green for wanted or add, blue for a note, amber for unc
 
 ## The canvas
 
-Pen, arrow, box, eraser. Six colours. Undo, clear. Keys: `P` `A` `B` `E` for tools, `1`-`6`
-for colour, `[` `]` for size, `Ctrl+Z` undo, `Ctrl+V` paste an image, `Ctrl+Enter` send.
-Images can also be dropped on the window. "Skip" tells you they are not answering this one.
+Pen, line, arrow, box, ellipse, fill, eraser. Six colours. Undo, clear. Keys: `P` `L` `A` `B`
+`O` `F` `E` for tools, `1`-`6` for colour, `[` `]` for size, `Ctrl+Z` undo, `Ctrl+V` paste an
+image, `Ctrl+Enter` send. Picking fill again flips it between stopping at their own marks
+only (`mode: "shape"` in the stroke data) and stopping at edges in the underlying image too
+(`mode: "image"`). Images can also be dropped on the window. Send shows them a preview
+to confirm first, so a submitted drawing is always deliberate. "Skip" tells you they are not
+answering this one.
+
+**They can ask you for a screenshot.** The canvas has a "Send me a screenshot" button, and
+`request_drawing` then returns a `want_screenshot` outcome instead of an image. That is not a
+refusal: capture or find the image they mean, then call `request_drawing` again with
+`image_path` set to it. Anything they typed in the caption box comes back as the note saying
+what they want a picture of. Do it immediately; they are sat on the canvas waiting.
 
 ## Notes
 

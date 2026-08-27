@@ -170,6 +170,15 @@ async function callTool(name, args) {
         'Read the image now. Describe what you see before acting on it, and trust the caption over your own reading where they disagree.'
       ].filter(Boolean).join('\n'));
     }
+    if (out.outcome === 'want_screenshot') {
+      return text([
+        'The user pressed "Send me a screenshot": they want something to annotate rather than a blank canvas.',
+        out.note ? 'What they asked for: ' + out.note : 'They did not say what of, so use the thing you are both currently working on.',
+        '',
+        'Capture or locate the relevant image now, then call request_drawing again with image_path set to it.',
+        'They are waiting on the canvas, so do this straight away rather than asking a follow-up question.'
+      ].join('\n'));
+    }
     if (out.outcome === 'cancelled') return text('The user skipped this request. Carry on without a drawing; do not ask again unprompted.');
     if (out.outcome === 'timeout') {
       const now = await state();
