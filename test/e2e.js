@@ -126,6 +126,20 @@ function sse(onEvent) {
 
   stream.destroy();
 
+  console.log('\n=== LAN exposure is opt-in ===');
+  const LOOP_PORT = PORT + 1;
+  const d2 = spawn(process.execPath, [path.join(ROOT, 'server', 'daemon.js'), '--port', String(LOOP_PORT), '--out', OUT],
+    { stdio: ['ignore', 'ignore', 'pipe'], env: Object.assign({}, process.env, { CLAUDE_DRAW_LAN: '' }) });
+  d2.stderr.on('data', (b) => process.stdout.write('  [daemon2:err] ' + b));
+  await sleep(900);
+  const s5 = await (await fetch('http://127.0.0.1:' + LOOP_PORT + '/state')).json().catch(() => null);
+  check('default daemon comes up', !!s5 && s5.ok === true);
+  check('default is loopback only', !!s5 && s5.lan === false);
+  check('no LAN address advertised by default', !!s5 && (s5.urls.lan || []).length === 0);
+  await fetch('http://127.0.0.1:' + LOOP_PORT + '/shutdown', { method: 'POST', body: '{}' }).catch(() => {});
+  await sleep(300);
+  d2.kill();
+
   console.log('\n=== MCP stdio layer ===');
   const m = spawn(process.execPath, [path.join(ROOT, 'server', 'mcp.js')], {
     stdio: ['pipe', 'pipe', 'pipe'], env: Object.assign({}, process.env, { CLAUDE_DRAW_PORT: String(PORT) })

@@ -4,6 +4,9 @@
 //
 //   node daemon.js [--port 7331] [--lan] [--out <dir>]
 //
+// Binds loopback only by default. --lan (or CLAUDE_DRAW_LAN=1) binds 0.0.0.0 so other
+// devices on the same network can open the canvas.
+//
 // Claude talks to it over loopback (POST /request, which blocks until the user submits).
 // Browsers, including ones on other devices, hold a GET /events SSE stream and are pushed
 // each new request as it arrives.
@@ -20,7 +23,9 @@ const flag = (n, d) => { const i = argv.indexOf(n); return i !== -1 && argv[i + 
 const has = (n) => argv.indexOf(n) !== -1;
 
 const PORT = parseInt(flag('--port', process.env.CLAUDE_DRAW_PORT || '7331'), 10);
-const HOST = has('--lan') ? '0.0.0.0' : '127.0.0.1';
+// Loopback only unless LAN exposure is asked for explicitly, by flag or env.
+const truthy = (v) => /^(1|true|yes|on)$/i.test(String(v || ''));
+const HOST = (has('--lan') || truthy(process.env.CLAUDE_DRAW_LAN)) ? '0.0.0.0' : '127.0.0.1';
 const DEFAULT_OUT = flag('--out', path.join(os.tmpdir(), 'claude-draw'));
 const CANVAS = path.join(__dirname, 'canvas.html');
 

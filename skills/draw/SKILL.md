@@ -54,8 +54,13 @@ prompt is your question; the drawing is their answer.
 
 `request_drawing` tries to open a browser on this machine when no canvas is connected, which
 is right when the user is sat here and wrong when they are not. If it times out with no canvas
-connected, call `draw_status` and give the user the LAN URL to open on their device. Once open,
-that tab keeps working for every later request, so this is a one-time cost per device.
+connected, call `draw_status` and give the user the URL to open. Once open, that tab keeps
+working for every later request, so this is a one-time cost per device.
+
+`draw_status` also reports whether other devices are allowed to reach the canvas at all. It is
+off by default. If the user wants to draw on a tablet or phone, tell them to set
+`CLAUDE_DRAW_LAN=1` in their Claude Code environment and restart, then read the LAN URL back
+to them.
 
 ## Reading the drawing
 
@@ -96,7 +101,7 @@ Images can also be dropped on the window. "Skip" tells you they are not answerin
 - Touch input is ignored on purpose, so a resting palm cannot draw. Pen and mouse only.
 - Pressure works on real pen hardware. Cheap tablets often report as a mouse with pressure
   pinned at 0.5; the canvas falls back to a fixed line width and that is fine.
-- The daemon binds the local network by default so other devices can reach it. Only drawing
-  is exposed that way: `request_drawing` and shutdown are loopback-only, so a device on the
-  network can answer questions but cannot drive the session.
+- The daemon binds loopback only unless `CLAUDE_DRAW_LAN` is set. When it is, only drawing is
+  exposed: `request_drawing` and shutdown stay loopback-only, so a device on the network can
+  answer questions but cannot drive the session.
 - Requests queue. Asking twice before the first is answered is safe.

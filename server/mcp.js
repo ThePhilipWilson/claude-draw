@@ -13,7 +13,9 @@ const fs = require('fs');
 
 const PORT = parseInt(process.env.CLAUDE_DRAW_PORT || '7331', 10);
 const BASE = 'http://127.0.0.1:' + PORT;
-const LAN = process.env.CLAUDE_DRAW_LAN !== '0';
+// Off by default: loopback only. Opt in with CLAUDE_DRAW_LAN=1 to let other devices
+// on the same network open the canvas.
+const LAN = /^(1|true|yes|on)$/i.test(process.env.CLAUDE_DRAW_LAN || '');
 const DAEMON = path.join(__dirname, 'daemon.js');
 const NAME = 'claude-draw';
 const VERSION = '1.0.0';
@@ -57,7 +59,18 @@ function openBrowser(url) {
 function urlLines(s) {
   const out = ['Local: ' + s.urls.local];
   (s.urls.lan || []).forEach((l) => out.push('Other devices: ' + l.url + '  (' + l.iface + ')'));
+  if (!s.lan) out.push('Other devices: off. Set CLAUDE_DRAW_LAN=1 and restart the daemon to allow them.');
+  else if (!(s.urls.lan || []).length) out.push('Other devices: on, but no non-loopback IPv4 address was found.');
   return out;
+}
+
+// A daemon left over from an earlier session may be bound differently to what is
+// configured now. Say so rather than quietly ignoring the setting.
+function lanMismatch(s) {
+  if (!s || s.lan === LAN) return null;
+  return s.lan
+    ? 'Note: the running daemon is exposed to the local network but CLAUDE_DRAW_LAN is not set. It started before the setting changed; restart it to bind loopback only.'
+    : 'Note: CLAUDE_DRAW_LAN is set but the running daemon is bound to loopback only. It started before the setting changed; restart it to reach it from other devices.';
 }
 
 // ---- tools ----------------------------------------------------------------
@@ -86,7 +99,7 @@ const TOOLS = [
   },
   {
     name: 'draw_status',
-    description: 'Check whether the drawing daemon is running and whether a canvas page is currently connected, and get the URLs to open it on this machine or another device.',
+    description: 'Check whether the drawing daemon is running and whether a canvas page is currently connected, get the URLs to open it on this machine or another device, and see whether other devices are allowed to reach it at all.',
     inputSchema: { type: 'object', properties: {} }
   },
   {
@@ -107,7 +120,7 @@ async function callTool(name, args) {
       'Canvas pages connected: ' + s.canvases + (s.canvases ? '' : '  <- nobody is looking at it yet'),
       s.active ? 'A request is currently open on the canvas.' : 'Idle, waiting for a request.',
       ''
-    ].concat(urlLines(s)).join('\n'));
+    ].concat(urlLines(s), [lanMismatch(s)].filter(Boolean)).join('\n'));
   }
 
   if (name === 'open_canvas') {
@@ -161,7 +174,7 @@ async function callTool(name, args) {
     if (out.outcome === 'timeout') {
       const now = await state();
       return text('Nobody answered within ' + timeout + 's.' +
-        (now && !now.canvases ? ' No canvas page is open: ask the user to open ' + (now.urls.lan[0] ? now.urls.lan[0].url : now.urls.local) + '.' : ' The canvas is open but was left untouched.'));
+        (now && !now.canvases ? ' No canvas page is open: ask the user to open ' + ((now.urls.lan || [])[0] ? now.urls.lan[0].url : now.urls.local) + '.' : ' The canvas is open but was left untouched.'));
     }
     return text('Unexpected outcome: ' + JSON.stringify(out));
   }

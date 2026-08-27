@@ -42,12 +42,21 @@ Type `/draw` to ask for a canvas yourself.
 
 ## Drawing from another device
 
-The daemon binds the local network, so a tablet, phone or Chromebook on the same Wi-Fi can be
-the drawing surface while Claude runs on your desktop.
+Off by default: the daemon binds loopback only, so the canvas is reachable from this machine
+and nowhere else. Turn it on and a tablet, phone or Chromebook on the same Wi-Fi can be the
+drawing surface while Claude runs on your desktop.
 
-1. Ask Claude for `draw_status` to get the LAN URL, something like `http://192.168.1.20:7331/`.
-2. Open it on the device and leave the tab open.
-3. Every later request appears on that page automatically. No refresh, no reopening.
+1. Set `CLAUDE_DRAW_LAN=1` in the environment Claude Code runs in, e.g. in `settings.json`:
+
+   ```json
+   { "env": { "CLAUDE_DRAW_LAN": "1" } }
+   ```
+
+   A daemon that is already running keeps its old binding. Restart Claude Code, or ask Claude
+   for `draw_status`, which says when the running daemon and the setting disagree.
+2. Ask Claude for `draw_status` to get the LAN URL, something like `http://192.168.1.20:7331/`.
+3. Open it on the device and leave the tab open.
+4. Every later request appears on that page automatically. No refresh, no reopening.
 
 Bookmark it once per device.
 
@@ -61,18 +70,21 @@ Bookmark it once per device.
 
 ## Security
 
-The daemon separates the two directions deliberately. Anything on the local network can load
-the canvas and submit a drawing. Only loopback can create a request or shut the daemon down,
-so a device on your network can answer Claude's questions but cannot drive your session.
+The daemon binds loopback only unless you opt in, so out of the box nothing on your network
+can reach it.
 
-Set `CLAUDE_DRAW_LAN=0` to bind loopback only and give up multi-device use.
+With `CLAUDE_DRAW_LAN=1` the two directions stay separate deliberately. Anything on the local
+network can load the canvas and submit a drawing. Only loopback can create a request or shut
+the daemon down, so a device on your network can answer Claude's questions but cannot drive
+your session. Worth knowing before you turn it on: there is no authentication, so anyone on
+that network can see the prompt and the image you were asked to annotate.
 
 ## Configuration
 
 | Variable | Default | Effect |
 |---|---|---|
 | `CLAUDE_DRAW_PORT` | `7331` | Port the daemon listens on |
-| `CLAUDE_DRAW_LAN` | unset (on) | Set to `0` to bind loopback only |
+| `CLAUDE_DRAW_LAN` | unset (off) | Set to `1` (or `true`/`yes`/`on`) to also bind the local network, so other devices can open the canvas |
 
 ## Layout
 
@@ -80,11 +92,27 @@ Set `CLAUDE_DRAW_LAN=0` to bind loopback only and give up multi-device use.
 claude-draw/
   .claude-plugin/plugin.json   manifest
   .mcp.json                    MCP server registration
+  package.json                 pins "type": "commonjs" (see below)
   skills/draw/SKILL.md         when to use it, how to read a drawing
   server/daemon.js             long-lived HTTP + SSE daemon
   server/canvas.html           the canvas page, single file
   server/mcp.js                stdio MCP server, starts the daemon on demand
+  test/e2e.js                  full round-trip test, no fixtures needed
 ```
+
+`package.json` exists to pin `"type": "commonjs"`. Node resolves module type from the
+*nearest* `package.json` up the tree, so dropping this plugin inside a project that declares
+`"type": "module"` would otherwise make every `require` throw. Do not remove it.
+
+## Tests
+
+```sh
+npm test
+```
+
+Starts a daemon on a spare port, drives a real SSE connection, pushes requests, submits and
+skips drawings, and exercises the MCP stdio protocol. No network, no fixtures, no
+dependencies. Exits non-zero on failure.
 
 The daemon starts on the first `request_drawing` call and stays up, which is what keeps the
 canvas page alive between requests instead of stranding it on a dead page.
