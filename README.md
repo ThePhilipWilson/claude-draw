@@ -96,12 +96,12 @@ claude-draw/
   .claude-plugin/plugin.json        manifest
   .claude-plugin/marketplace.json   single-plugin marketplace, for /plugin marketplace add
   .mcp.json                         MCP server registration
-  package.json                 pins "type": "commonjs" (see below)
-  skills/draw/SKILL.md         when to use it, how to read a drawing
-  server/daemon.js             long-lived HTTP + SSE daemon
-  server/canvas.html           the canvas page, single file
-  server/mcp.js                stdio MCP server, starts the daemon on demand
-  test/e2e.js                  full round-trip test, no fixtures needed
+  package.json                    pins "type": "commonjs" (see below)
+  skills/draw/SKILL.md            when to use it, how to read a drawing
+  server/daemon.js                long-lived HTTP + SSE daemon
+  server/canvas.html              the canvas page, single file
+  server/mcp.js                   stdio MCP server, starts the daemon on demand
+  test/e2e.js                     full round-trip test, no fixtures needed
 ```
 
 `package.json` exists to pin `"type": "commonjs"`. Node resolves module type from the
