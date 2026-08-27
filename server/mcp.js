@@ -18,7 +18,7 @@ const BASE = 'http://127.0.0.1:' + PORT;
 const LAN = /^(1|true|yes|on)$/i.test(process.env.CLAUDE_DRAW_LAN || '');
 const DAEMON = path.join(__dirname, 'daemon.js');
 const NAME = 'claude-draw';
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 const log = (m) => process.stderr.write('[claude-draw] ' + m + '\n');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
