@@ -13,19 +13,22 @@ Node 18 or newer on PATH. Nothing else. No npm install, no dependencies.
 
 ## Install
 
-The plugin lives in a skills directory, so it loads every session with no install step.
+The repo is its own single-plugin marketplace, so a fresh machine needs two commands:
 
-**This machine:** already at `~/.claude/skills/claude-draw/`. Restart Claude Code to pick it up.
+```
+/plugin marketplace add ThePhilipWilson/claude-draw
+/plugin install claude-draw@claude-draw
+```
 
-**Another machine (Mac, Linux, another PC):**
+**Or drop it in a skills directory** instead, which loads every session with no install step:
 
 ```sh
 mkdir -p ~/.claude/skills
 cp -r /path/to/claude-draw ~/.claude/skills/
 ```
 
-Restart Claude Code. Confirm with `claude plugin list`, which should show
-`claude-draw@skills-dir`, and check the `claude-draw` MCP server is connected.
+Either way, restart Claude Code. Confirm with `claude plugin list`, and check the
+`claude-draw` MCP server is connected.
 
 Nothing in the plugin is path-specific or OS-specific: the browser launcher picks `start`,
 `open` or `xdg-open` per platform, and all paths resolve relative to the plugin root.
@@ -90,8 +93,9 @@ that network can see the prompt and the image you were asked to annotate.
 
 ```
 claude-draw/
-  .claude-plugin/plugin.json   manifest
-  .mcp.json                    MCP server registration
+  .claude-plugin/plugin.json        manifest
+  .claude-plugin/marketplace.json   single-plugin marketplace, for /plugin marketplace add
+  .mcp.json                         MCP server registration
   package.json                 pins "type": "commonjs" (see below)
   skills/draw/SKILL.md         when to use it, how to read a drawing
   server/daemon.js             long-lived HTTP + SSE daemon
