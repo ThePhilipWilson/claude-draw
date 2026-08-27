@@ -1,0 +1,3 @@
+# Cross-platform plugin: keep LF in the repo so a Mac or Linux checkout is clean.
+* text=auto eol=lf
+*.png binary

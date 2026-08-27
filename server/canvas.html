@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Canvas for Claude</title>
+<style>
+  :root {
+    --bg: #1b1d21; --panel: #24272c; --edge: #34383f;
+    --text: #e6e8ea; --muted: #9aa0a8; --accent: #d97757;
+    --good: #4ade80; --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font: 14px/1.4 "Segoe UI", system-ui, -apple-system, sans-serif;
+    touch-action: none; -webkit-user-select: none; user-select: none;
+  }
+  body { display: flex; flex-direction: column; }
+
+  #ask { display: none; gap: 10px; align-items: baseline; flex: 0 0 auto;
+    padding: 10px 14px; background: #2f2119; border-bottom: 1px solid #4a3527; color: #f2d9c9; }
+  #ask.show { display: flex; }
+  #ask b { color: var(--accent); flex: 0 0 auto; letter-spacing: .04em; font-size: 12px; text-transform: uppercase; }
+
+  .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    background: var(--panel); border-bottom: 1px solid var(--edge); flex: 0 0 auto; flex-wrap: wrap; }
+  .bar.bottom { border-bottom: none; border-top: 1px solid var(--edge); }
+
+  button { font: inherit; color: var(--text); background: #2e3238; border: 1px solid var(--edge);
+    border-radius: 6px; padding: 7px 12px; cursor: pointer; min-height: 38px; }
+  button:hover { background: #383d44; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #1b1d21; font-weight: 600; }
+  button:disabled { opacity: .4; cursor: default; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid var(--edge); min-height: 0; }
+  .swatch.on { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+
+  .sep { width: 1px; height: 26px; background: var(--edge); margin: 0 4px; }
+  .spacer { flex: 1 1 auto; }
+  .hint { color: var(--muted); font-size: 12px; }
+  #sizeLabel { color: var(--muted); min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; }
+
+  #dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); flex: 0 0 auto; }
+  #dot.live { background: var(--good); }
+
+  #stage { flex: 1 1 auto; position: relative; display: flex; align-items: center;
+    justify-content: center; padding: 10px; min-height: 0; }
+  #wrap { position: relative; line-height: 0; box-shadow: 0 6px 24px rgba(0,0,0,.5);
+    border-radius: 4px; overflow: hidden; }
+  #wrap canvas { display: block; touch-action: none; }
+  #bg { background: #fff; }
+  #board { position: absolute; inset: 0; cursor: none; }
+
+  #ring { position: fixed; pointer-events: none; border: 1px solid #000; border-radius: 50%;
+    mix-blend-mode: difference; display: none; box-shadow: 0 0 0 1px rgba(255,255,255,.6) inset; }
+
+  #drop { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center;
+    background: rgba(27,29,33,.86); border: 3px dashed var(--accent); font-size: 20px; color: var(--accent); }
+  #drop.show { display: flex; }
+
+  #caption { flex: 1 1 320px; min-width: 200px; font: inherit; color: var(--text);
+    background: #2e3238; border: 1px solid var(--edge); border-radius: 6px; padding: 9px 11px; min-height: 38px; }
+  #caption::placeholder { color: #6f757d; }
+  #send { background: var(--accent); border-color: var(--accent); color: #1b1d21; font-weight: 600; padding: 9px 20px; }
+  #send:hover { filter: brightness(1.08); }
+
+  /* Idle: the page's resting state, never a dead end. */
+  #idle { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; background: var(--bg); text-align: center; padding: 24px; }
+  #idle.hide { display: none; }
+  #idle h2 { margin: 0; font-size: 20px; font-weight: 600; }
+  #idle p { margin: 0; color: var(--muted); max-width: 46ch; }
+  #idle code { background: var(--panel); border: 1px solid var(--edge); border-radius: 5px;
+    padding: 3px 8px; color: var(--text); font-size: 13px; }
+  .pulse { display: flex; gap: 6px; }
+  .pulse i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); opacity: .3;
+    animation: bounce 1.4s infinite; }
+  .pulse i:nth-child(2) { animation-delay: .18s; }
+  .pulse i:nth-child(3) { animation-delay: .36s; }
+  @keyframes bounce { 0%,60%,100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-4px); } }
+  @media (prefers-reduced-motion: reduce) { .pulse i { animation: none; opacity: .6; } }
+
+  #flash { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%);
+    background: var(--good); color: #10261a; font-weight: 600; padding: 9px 18px; border-radius: 999px;
+    opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 60; }
+  #flash.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="ask"><b>Claude asks</b><span id="askText"></span></div>
+
+<div class="bar">
+  <button id="tPen" class="on" title="Pen (P)">Pen</button>
+  <button id="tArrow" title="Arrow (A)">Arrow</button>
+  <button id="tBox" title="Box (B)">Box</button>
+  <button id="tEraser" title="Eraser (E)">Eraser</button>
+  <div class="sep"></div>
+  <button id="sizeDown" title="Thinner ([)">&minus;</button>
+  <span id="sizeLabel">4</span>
+  <button id="sizeUp" title="Thicker (])">+</button>
+  <div class="sep"></div>
+  <span id="colours"></span>
+  <div class="sep"></div>
+  <button id="undo" title="Undo (Ctrl+Z)">Undo</button>
+  <button id="clear" title="Clear all marks">Clear</button>
+  <div class="spacer"></div>
+  <span id="dot" title="connection"></span>
+  <span class="hint" id="hint">connecting</span>
+</div>
+
+<div id="stage">
+  <div id="wrap">
+    <canvas id="bg" width="1280" height="960"></canvas>
+    <canvas id="board" width="1280" height="960"></canvas>
+  </div>
+  <div id="idle">
+    <div class="pulse"><i></i><i></i><i></i></div>
+    <h2 id="idleTitle">Waiting for Claude</h2>
+    <p id="idleText">This page stays open. When Claude asks for a sketch or sends something to annotate, it appears here automatically.</p>
+    <p><code id="idleUrl"></code></p>
+  </div>
+</div>
+
+<div class="bar bottom">
+  <input id="caption" placeholder="What is this? e.g. red box is the bit that should move">
+  <button id="send">Send to Claude</button>
+  <button id="cancel" title="Skip this request">Skip</button>
+</div>
+
+<div id="ring"></div>
+<div id="drop">Drop an image to annotate</div>
+<div id="flash">Sent to Claude</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var MAX_EDGE = 1600;
+  var BLANK_W = 1280, BLANK_H = 960;
+
+  var wrap = document.getElementById('wrap');
+  var bg = document.getElementById('bg'), bgc = bg.getContext('2d');
+  var board = document.getElementById('board');
+  var ctx = board.getContext('2d', { willReadFrequently: true });
+  var ring = document.getElementById('ring');
+  var idle = document.getElementById('idle');
+  var dot = document.getElementById('dot');
+  var hint = document.getElementById('hint');
+
+  var W = BLANK_W, H = BLANK_H;
+  var backgroundKind = 'blank';
+  var currentId = null;
+
+  var COLOURS = ['#e11d48', '#2563eb', '#16a34a', '#f59e0b', '#a21caf', '#111111'];
+  var state = { tool: 'pen', colour: COLOURS[0], size: 4, pressureSeen: false };
+  var history = [], HISTORY_MAX = 15, strokes = [], current = null;
+
+  document.getElementById('idleUrl').textContent = location.origin + '/';
+
+  // ---- sizing ----------------------------------------------------------
+  function resize(w, h) {
+    W = w; H = h;
+    bg.width = w; bg.height = h; board.width = w; board.height = h;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    history = []; strokes = [];
+    document.getElementById('undo').disabled = true;
+    fit();
+  }
+  function blankBackground() {
+    resize(BLANK_W, BLANK_H);
+    bgc.fillStyle = '#ffffff'; bgc.fillRect(0, 0, W, H);
+    backgroundKind = 'blank';
+  }
+  function useImage(src, kind, done) {
+    var img = new Image();
+    img.onload = function () {
+      var scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+      resize(Math.max(1, Math.round(img.width * scale)), Math.max(1, Math.round(img.height * scale)));
+      bgc.fillStyle = '#ffffff'; bgc.fillRect(0, 0, W, H);
+      bgc.drawImage(img, 0, 0, W, H);
+      backgroundKind = kind;
+      hint.textContent = 'annotating ' + img.width + '×' + img.height;
+      pickColour(0);   // black vanishes on a screenshot; start on red
+      if (done) done();
+    };
+    img.onerror = function () { hint.textContent = 'image failed to load'; if (done) done(); };
+    img.src = src;
+  }
+  function fit() {
+    var stage = document.getElementById('stage');
+    var aw = stage.clientWidth - 20, ah = stage.clientHeight - 20;
+    var scale = Math.min(aw / W, ah / H);
+    if (!(scale > 0)) return;
+    var w = Math.round(W * scale), h = Math.round(H * scale);
+    wrap.style.width = w + 'px'; wrap.style.height = h + 'px';
+    bg.style.width = w + 'px'; bg.style.height = h + 'px';
+    board.style.width = w + 'px'; board.style.height = h + 'px';
+    drawRing();
+  }
+  window.addEventListener('resize', fit);
+
+  // ---- palette / tools -------------------------------------------------
+  var colourBox = document.getElementById('colours');
+  function pickColour(i) {
+    state.colour = COLOURS[i];
+    [].forEach.call(colourBox.children, function (el, n) { el.classList.toggle('on', n === i); });
+  }
+  COLOURS.forEach(function (c, i) {
+    var b = document.createElement('button');
+    b.className = 'swatch' + (i === 0 ? ' on' : '');
+    b.style.background = c; b.title = 'Colour ' + (i + 1);
+    b.addEventListener('click', function () { pickColour(i); if (state.tool === 'eraser') setTool('pen'); });
+    colourBox.appendChild(b);
+  });
+
+  var TOOLS = { pen: 'tPen', arrow: 'tArrow', box: 'tBox', eraser: 'tEraser' };
+  function setTool(t) {
+    state.tool = t;
+    Object.keys(TOOLS).forEach(function (k) { document.getElementById(TOOLS[k]).classList.toggle('on', k === t); });
+    drawRing();
+  }
+  Object.keys(TOOLS).forEach(function (k) {
+    document.getElementById(TOOLS[k]).addEventListener('click', function () { setTool(k); });
+  });
+
+  var sizeLabel = document.getElementById('sizeLabel');
+  function setSize(n) { state.size = Math.max(1, Math.min(64, n)); sizeLabel.textContent = state.size; drawRing(); }
+  document.getElementById('sizeUp').addEventListener('click', function () { setSize(state.size + (state.size < 8 ? 1 : 4)); });
+  document.getElementById('sizeDown').addEventListener('click', function () { setSize(state.size - (state.size <= 8 ? 1 : 4)); });
+
+  // ---- history ---------------------------------------------------------
+  var undoBtn = document.getElementById('undo');
+  function snapshot() {
+    try { history.push(ctx.getImageData(0, 0, W, H)); if (history.length > HISTORY_MAX) history.shift(); }
+    catch (e) { /* non-fatal: undo depth just gets shorter */ }
+    undoBtn.disabled = history.length === 0;
+  }
+  function undo() {
+    var img = history.pop(); if (!img) return;
+    ctx.putImageData(img, 0, 0); strokes.pop();
+    undoBtn.disabled = history.length === 0;
+  }
+  undoBtn.addEventListener('click', undo); undoBtn.disabled = true;
+  document.getElementById('clear').addEventListener('click', function () {
+    snapshot(); ctx.clearRect(0, 0, W, H); strokes = [];
+  });
+
+  function toCanvas(e) {
+    var r = board.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+  }
+
+  var lastClient = { x: -999, y: -999 };
+  function drawRing() {
+    var r = board.getBoundingClientRect(); if (!r.width) return;
+    var px = state.size * (r.width / W);
+    var d = Math.max(8, px * (state.tool === 'eraser' ? 3 : 1));
+    ring.style.width = d + 'px'; ring.style.height = d + 'px';
+    ring.style.left = (lastClient.x - d / 2) + 'px'; ring.style.top = (lastClient.y - d / 2) + 'px';
+  }
+
+  // ---- drawing ---------------------------------------------------------
+  function widthFor(e) {
+    var base = state.size * (state.tool === 'eraser' ? 3 : 1);
+    if (e && e.pointerType === 'pen' && e.pressure > 0 && e.pressure !== 0.5) {
+      state.pressureSeen = true;
+      return Math.max(0.5, base * (0.35 + 1.3 * e.pressure));
+    }
+    return base;
+  }
+  function applyStyle(e) {
+    ctx.globalCompositeOperation = state.tool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = state.colour; ctx.fillStyle = state.colour; ctx.lineWidth = widthFor(e);
+  }
+  function penSegment(from, to, e) {
+    applyStyle(e);
+    ctx.beginPath(); ctx.moveTo(from.x, from.y);
+    var mx = (from.x + to.x) / 2, my = (from.y + to.y) / 2;
+    ctx.quadraticCurveTo(from.x, from.y, mx, my); ctx.lineTo(to.x, to.y); ctx.stroke();
+  }
+  function drawArrow(a, b) {
+    applyStyle(null);
+    var head = Math.max(12, ctx.lineWidth * 4);
+    var ang = Math.atan2(b.y - a.y, b.x - a.x);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x - Math.cos(ang) * head * 0.55, b.y - Math.sin(ang) * head * 0.55); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b.x, b.y);
+    ctx.lineTo(b.x - Math.cos(ang - 0.42) * head, b.y - Math.sin(ang - 0.42) * head);
+    ctx.lineTo(b.x - Math.cos(ang + 0.42) * head, b.y - Math.sin(ang + 0.42) * head);
+    ctx.closePath(); ctx.fill();
+  }
+  function drawBox(a, b) {
+    applyStyle(null);
+    ctx.strokeRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+  }
+  function restoreForPreview() {
+    var top = history[history.length - 1];
+    if (top) ctx.putImageData(top, 0, 0); else ctx.clearRect(0, 0, W, H);
+  }
+
+  board.addEventListener('pointerdown', function (e) {
+    if (currentId === null) return;
+    if (e.pointerType === 'touch' || e.button !== 0) return;
+    e.preventDefault();
+    board.setPointerCapture(e.pointerId);
+    snapshot();
+    var p = toCanvas(e);
+    current = { tool: state.tool, colour: state.colour, size: state.size, from: p, to: p, points: [{ x: p.x, y: p.y, p: e.pressure }] };
+    strokes.push(current);
+    if (state.tool === 'pen' || state.tool === 'eraser') {
+      applyStyle(e);
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.4, ctx.lineWidth / 2), 0, Math.PI * 2); ctx.fill();
+    }
+  });
+
+  board.addEventListener('pointermove', function (e) {
+    lastClient.x = e.clientX; lastClient.y = e.clientY;
+    ring.style.display = 'block'; drawRing();
+    if (!current || e.pointerType === 'touch') return;
+    e.preventDefault();
+    if (current.tool === 'arrow' || current.tool === 'box') {
+      current.to = toCanvas(e);
+      restoreForPreview();
+      if (current.tool === 'arrow') drawArrow(current.from, current.to); else drawBox(current.from, current.to);
+      return;
+    }
+    var evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || [e];
+    for (var i = 0; i < evs.length; i++) {
+      var ev = evs[i], p = toCanvas(ev), prev = current.points[current.points.length - 1];
+      penSegment(prev, p, ev);
+      current.points.push({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, p: ev.pressure });
+    }
+  });
+
+  function endStroke() {
+    if (!current) return;
+    current = null;
+    if (state.pressureSeen) hint.textContent = 'pressure: active';
+  }
+  board.addEventListener('pointerup', endStroke);
+  board.addEventListener('pointercancel', endStroke);
+  board.addEventListener('pointerleave', function () { ring.style.display = 'none'; });
+  board.addEventListener('pointerenter', function () { ring.style.display = 'block'; });
+  board.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  // ---- image in --------------------------------------------------------
+  window.addEventListener('paste', function (e) {
+    if (currentId === null) return;
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image/') === 0) {
+        var f = items[i].getAsFile(); if (!f) continue;
+        e.preventDefault();
+        var fr = new FileReader();
+        fr.onload = function () { useImage(fr.result, 'pasted'); };
+        fr.readAsDataURL(f);
+        return;
+      }
+    }
+  });
+  var dropZone = document.getElementById('drop'), dragDepth = 0;
+  window.addEventListener('dragenter', function (e) { e.preventDefault(); if (currentId === null) return; dragDepth++; dropZone.classList.add('show'); });
+  window.addEventListener('dragover', function (e) { e.preventDefault(); });
+  window.addEventListener('dragleave', function (e) { e.preventDefault(); if (--dragDepth <= 0) { dragDepth = 0; dropZone.classList.remove('show'); } });
+  window.addEventListener('drop', function (e) {
+    e.preventDefault(); dragDepth = 0; dropZone.classList.remove('show');
+    if (currentId === null) return;
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f || f.type.indexOf('image/') !== 0) return;
+    var fr = new FileReader();
+    fr.onload = function () { useImage(fr.result, 'dropped'); };
+    fr.readAsDataURL(f);
+  });
+
+  // ---- request lifecycle ----------------------------------------------
+  function goIdle(title, text) {
+    currentId = null;
+    document.getElementById('ask').classList.remove('show');
+    document.getElementById('idleTitle').textContent = title || 'Waiting for Claude';
+    document.getElementById('idleText').textContent = text ||
+      'This page stays open. When Claude asks for a sketch or sends something to annotate, it appears here automatically.';
+    idle.classList.remove('hide');
+    document.getElementById('caption').value = '';
+    document.getElementById('send').disabled = false;
+    document.getElementById('send').textContent = 'Send to Claude';
+    hint.textContent = 'idle';
+  }
+
+  function goActive(req) {
+    currentId = req.id;
+    if (req.prompt) {
+      document.getElementById('askText').textContent = req.prompt;
+      document.getElementById('ask').classList.add('show');
+    } else {
+      document.getElementById('ask').classList.remove('show');
+    }
+    document.getElementById('caption').value = '';
+    document.getElementById('send').disabled = false;
+    document.getElementById('send').textContent = 'Send to Claude';
+    var reveal = function () { idle.classList.add('hide'); setTimeout(fit, 30); };
+    if (req.image) { useImage(req.image + '?t=' + Date.now(), 'seeded', reveal); }
+    else { blankBackground(); hint.textContent = 'blank canvas'; reveal(); }
+    if (document.hidden && window.Notification && Notification.permission === 'granted') {
+      try { new Notification('Claude wants a drawing', { body: req.prompt || 'Open the canvas' }); } catch (e) {}
+    }
+  }
+
+  function flash(msg) {
+    var f = document.getElementById('flash');
+    f.textContent = msg; f.classList.add('show');
+    setTimeout(function () { f.classList.remove('show'); }, 1600);
+  }
+
+  function flatten() {
+    var out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    var o = out.getContext('2d');
+    o.drawImage(bg, 0, 0); o.drawImage(board, 0, 0);
+    return out.toDataURL('image/png');
+  }
+
+  var sending = false;
+  function send() {
+    if (sending || currentId === null) return;
+    sending = true;
+    var btn = document.getElementById('send');
+    btn.disabled = true; btn.textContent = 'Sending...';
+    fetch('/submit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: currentId, png: flatten(),
+        caption: document.getElementById('caption').value,
+        background: backgroundKind, strokes: strokes
+      })
+    }).then(function (r) {
+      sending = false;
+      if (!r.ok) throw new Error('server said ' + r.status);
+      flash('Sent to Claude');
+      goIdle();
+    }).catch(function (err) {
+      sending = false; btn.disabled = false; btn.textContent = 'Send to Claude';
+      flash('Send failed: ' + err.message);
+    });
+  }
+  document.getElementById('send').addEventListener('click', send);
+
+  document.getElementById('cancel').addEventListener('click', function () {
+    if (currentId === null) return;
+    fetch('/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: currentId }) })
+      .catch(function () {});
+    goIdle('Skipped', 'Told Claude you are skipping that one. Still listening for the next request.');
+  });
+
+  // ---- keyboard --------------------------------------------------------
+  window.addEventListener('keydown', function (e) {
+    var typing = e.target === document.getElementById('caption');
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); return send(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); return undo(); }
+    if (typing || e.ctrlKey || e.metaKey) return;
+    var k = e.key.toLowerCase();
+    if (k === 'p') setTool('pen');
+    if (k === 'a') setTool('arrow');
+    if (k === 'b') setTool('box');
+    if (k === 'e') setTool('eraser');
+    if (e.key === '[') setSize(state.size - 1);
+    if (e.key === ']') setSize(state.size + 1);
+    if (k >= '1' && k <= '6') pickColour(parseInt(k, 10) - 1);
+  });
+
+  // ---- live connection -------------------------------------------------
+  function connect() {
+    var es = new EventSource('/events');
+    es.addEventListener('open', function () { dot.classList.add('live'); if (currentId === null) hint.textContent = 'idle'; });
+    es.addEventListener('error', function () { dot.classList.remove('live'); hint.textContent = 'reconnecting'; });
+    es.addEventListener('hello', function (m) {
+      var d = JSON.parse(m.data);
+      if (d.active) goActive(d.active); else goIdle();
+    });
+    es.addEventListener('request', function (m) { goActive(JSON.parse(m.data)); });
+    es.addEventListener('settled', function (m) {
+      var d = JSON.parse(m.data);
+      if (currentId !== null && String(d.id) === String(currentId)) {
+        goIdle(d.outcome === 'timeout' ? 'That request timed out' : 'Done',
+               'Still listening. The next request will appear here.');
+      }
+    });
+  }
+
+  blankBackground();
+  goIdle();
+  connect();
+  if (window.Notification && Notification.permission === 'default') {
+    document.addEventListener('click', function once() {
+      document.removeEventListener('click', once);
+      try { Notification.requestPermission(); } catch (e) {}
+    });
+  }
+  setTimeout(fit, 60);
+})();
+</script>
+</body>
+</html>

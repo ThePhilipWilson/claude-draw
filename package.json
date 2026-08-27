@@ -1,0 +1,11 @@
+{
+  "name": "claude-draw",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hand-drawn input for Claude Code: a persistent canvas for sketching and annotating.",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node test/e2e.js"
+  }
+}
