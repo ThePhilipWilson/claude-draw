@@ -234,7 +234,7 @@ const server = http.createServer((req, res) => {
     res.write('retry: 2000\n\n');
     clients.add(res);
     // A page that connects mid-request should pick it up immediately.
-    res.write('event: hello\ndata: ' + JSON.stringify({ active: describe(active) }) + '\n\n');
+    res.write('event: hello\ndata: ' + JSON.stringify({ active: describe(active), urls: addresses() }) + '\n\n');
     // A real event, not a comment: the page listens for these to notice a socket that
     // died quietly, which is what a backgrounded phone browser does to it.
     const ka = setInterval(() => {

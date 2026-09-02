@@ -111,8 +111,11 @@
   #idle.hide { display: none; }
   #idle h2 { margin: 0; font-size: 20px; font-weight: 600; }
   #idle p { margin: 0; color: var(--muted); max-width: 46ch; }
-  #idle code { background: var(--panel); border: 1px solid var(--edge); border-radius: 5px;
-    padding: 3px 8px; color: var(--text); font-size: 13px; }
+  #urls { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  #urls a, #idle code { background: var(--panel); border: 1px solid var(--edge); border-radius: 5px;
+    padding: 4px 9px; color: var(--text); font-size: 13px; text-decoration: none; font-family: ui-monospace, Consolas, monospace; }
+  #urls a:hover { border-color: var(--accent); }
+  #urls .label { color: var(--muted); font-size: 12px; font-family: inherit; background: none; border: none; padding: 0; }
   .pulse { display: flex; gap: 6px; }
   .pulse i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); opacity: .3;
     animation: bounce 1.4s infinite; }
@@ -194,7 +197,7 @@
     <div class="pulse"><i></i><i></i><i></i></div>
     <h2 id="idleTitle">Waiting for Claude</h2>
     <p id="idleText">This page stays open. When Claude asks for a sketch or sends something to annotate, it appears here automatically.</p>
-    <p><code id="idleUrl"></code></p>
+    <div id="urls"></div>
   </div>
 </div>
 
@@ -248,8 +251,6 @@
   var dot = document.getElementById('dot');
   var hint = document.getElementById('hint');
   var captionEl = document.getElementById('caption');
-
-  document.getElementById('idleUrl').textContent = location.origin + '/';
 
   var W = BLANK_W, H = BLANK_H;
   var backgroundKind = 'blank';
@@ -703,6 +704,14 @@
     setTimeout(function () { f.classList.remove('show'); }, 2400);
   }
 
+  function flatten() {
+    var out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    var o = out.getContext('2d');
+    o.drawImage(bg, 0, 0); o.drawImage(board, 0, 0);
+    return out.toDataURL('image/png');
+  }
+
   // Colour goes out under both spellings. Claude reads this file to be precise about
   // what was marked, and guessing which spelling it is should not be part of that.
   function strokesOut() {
@@ -712,14 +721,6 @@
       if (out.colour) out.color = out.colour;
       return out;
     });
-  }
-
-  function flatten() {
-    var out = document.createElement('canvas');
-    out.width = W; out.height = H;
-    var o = out.getContext('2d');
-    o.drawImage(bg, 0, 0); o.drawImage(board, 0, 0);
-    return out.toDataURL('image/png');
   }
 
   // ---- caption ---------------------------------------------------------
@@ -848,6 +849,22 @@
     if (k === '7') pickCustom();
   });
 
+  // ---- where to open this ----------------------------------------------
+  // Both addresses on the idle screen, so the machine hosting it can read out the
+  // network URL without anyone going to look for it.
+  function showUrls(urls) {
+    var box = document.getElementById('urls');
+    box.textContent = '';
+    if (!urls) return;
+    var add = function (label, href) {
+      var l = document.createElement('span'); l.className = 'label'; l.textContent = label;
+      var a = document.createElement('a'); a.href = href; a.textContent = href;
+      box.appendChild(l); box.appendChild(a);
+    };
+    add('On this machine', urls.local);
+    (urls.lan || []).forEach(function (l) { add('On another device', l.url); });
+  }
+
   // ---- live connection -------------------------------------------------
   // EventSource reconnects itself when the socket closes cleanly. What it does not
   // notice is a socket that stops delivering without closing, which is exactly what a
@@ -875,6 +892,7 @@
     es.addEventListener('hello', function (m) {
       lastBeat = Date.now(); setLive(true);
       var d = JSON.parse(m.data);
+      showUrls(d.urls);
       if (d.active) goActive(d.active);
       else if (currentId !== null) goIdle('Done', 'Still listening. The next request will appear here.');
       else goIdle();
@@ -919,7 +937,7 @@
       reconnecting = false;
       if (r.status === 401) { setLive(false, 'pair again'); return showPair('This session has restarted. Enter the new code.'); }
       if (!r.ok) throw new Error(r.status);
-      return r.json().then(function () { connect(); });
+      return r.json().then(function (s) { showUrls(s.urls); connect(); });
     }).catch(function () {
       reconnecting = false;
       setLive(false, 'offline');
@@ -1004,7 +1022,10 @@
   function boot() {
     fetch('/state', { headers: headers(), cache: 'no-store' }).then(function (r) {
       if (r.status === 401) { setLive(false, 'not paired'); return showPair(''); }
-      return r.json().then(function () { connect(); });
+      return r.json().then(function (s) {
+        showUrls(s.urls);
+        connect();
+      });
     }).catch(function () {
       setLive(false, 'offline');
       setTimeout(boot, 3000);

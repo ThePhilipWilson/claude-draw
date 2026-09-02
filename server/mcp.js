@@ -75,10 +75,12 @@ function openBrowser(url) {
   } catch (e) { return false; }
 }
 
+// Both addresses, every time, spelled out so they are click-through links in the
+// terminal rather than something the user has to reconstruct.
 function urlLines(s) {
-  const out = ['Local: ' + s.urls.local];
-  (s.urls.lan || []).forEach((l) => out.push('Other devices: ' + l.url + '  (' + l.iface + ')'));
-  if (!s.lan) out.push('Other devices: off. Set CLAUDE_DRAW_LAN=1 and restart the daemon to allow them.');
+  const out = ['On this machine: ' + s.urls.local];
+  (s.urls.lan || []).forEach((l) => out.push('On another device: ' + l.url + '  (' + l.iface + ')'));
+  if (!s.lan) out.push('Other devices: off. Set CLAUDE_DRAW_LAN=1 and restart Claude Code to allow them.');
   else if (!(s.urls.lan || []).length) out.push('Other devices: on, but no non-loopback IPv4 address was found.');
   else if (s.code) out.push('Pairing code for that device: ' + s.code.slice(0, 3) + '-' + s.code.slice(3) +
     '  (asked for once per device, then remembered)');
@@ -149,8 +151,6 @@ const TOOLS = [
 ];
 
 // How a settled request reads back to Claude. Everything the drawing carries is named
-// here, including where the caption and stroke data were written, so nothing has to be
-// guessed at from the filename. Everything the drawing carries is named
 // here, including where the caption and stroke data were written, so nothing has to be
 // guessed at from the filename.
 function renderResult(out, timedWaited) {

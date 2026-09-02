@@ -77,7 +77,9 @@ you were answering and every stroke, and appended to a `log.jsonl` alongside. If
 never reaches Claude, the words are still there.
 
 Send shows you the flattened image and caption first, with `Enter` to confirm and `Esc` to go
-back. It tells you whether Claude was waiting or will pick it up next turn. "Send me a screenshot" is the other direction: it tells Claude to capture something and
+back, and it tells you whether Claude was waiting or will pick it up next turn.
+
+"Send me a screenshot" is the other direction: it tells Claude to capture something and
 send it back for you to annotate, which beats hunting for a file on a tablet. Whatever is in
 the caption box goes with it, so you can say what you want a picture of. "Skip" tells Claude
 you are not answering this one.
@@ -97,7 +99,7 @@ drawing surface while Claude runs on your desktop.
    A daemon that is already running keeps its old binding. Restart Claude Code, or ask Claude
    for `draw_status`, which says when the running daemon and the setting disagree.
 2. Ask Claude for `draw_status` to get the LAN URL, something like `http://192.168.1.20:7331/`,
-   and the six-digit pairing code.
+   and the six-digit pairing code. Both also appear on the idle canvas screen on this machine.
 3. Open the URL on the device and type the code in. That device is then remembered.
 4. Every later request appears on that page automatically. No refresh, no reopening.
 

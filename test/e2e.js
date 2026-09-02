@@ -85,6 +85,7 @@ function sse(onEvent, url) {
     'canvases=' + s2.canvases + ' (was ' + s1.canvases + ')');
   check('hello sent on connect', events.some((e) => e.ev === 'hello'));
   check('hello reports idle', events.filter((e) => e.ev === 'hello')[0].data.active === null);
+  check('hello carries the URLs to open elsewhere', !!(events.filter((e) => e.ev === 'hello')[0].data.urls || {}).local);
 
   console.log('\n=== asking does not block ===');
   const t0 = Date.now();
@@ -297,6 +298,7 @@ function sse(onEvent, url) {
   rpc({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'draw_status', arguments: {} } });
   await sleep(700);
   check('draw_status works through MCP', /Daemon running/.test(said(3)));
+  check('draw_status gives both URLs', /On this machine/.test(said(3)) && /On another device/.test(said(3)));
   check('draw_status gives the pairing code', /Pairing code/.test(said(3)));
 
   rpc({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'request_drawing', arguments: { image_path: path.join(OUT, 'nope.png'), prompt: 'x' } } });
