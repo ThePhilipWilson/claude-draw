@@ -43,8 +43,7 @@ do not re-ask.
 Answers are kept, so a drawing that arrives while you are doing something else is never lost.
 Collecting twice returns the same result rather than an error.
 
-**Read the returned PNG path** to see the drawing. The caption and the stroke data file come
-back with it.
+**Read the returned PNG path** to see the drawing.
 
 ## Running out of time
 
@@ -92,6 +91,53 @@ someone is connecting a phone or tablet: they type it into the canvas page once 
 device is remembered from then on. The code proves they joined this session and not some
 other machine's, so a device that cannot see the code cannot see the prompt.
 
+## What comes back
+
+A submitted drawing writes three things next to each other:
+
+| File | Contents |
+|---|---|
+| `draw-<stamp>.png` | The flattened image: background plus marks |
+| `draw-<stamp>.json` | Everything about the submission, including the caption |
+| `draw-<stamp>.strokes.json` | Just the array of marks |
+
+The sidecar `.json` is the one to read when you want more than the picture. It carries the
+prompt that was answered, the caption, the background kind, the canvas size and every stroke.
+Its shape:
+
+```json
+{
+  "schema": "claude-draw/submission@1",
+  "id": 3,
+  "at": "2026-09-02T14:22:07.113Z",
+  "prompt": "Circle the element that should move",
+  "caption": "red box is the bit that should move",
+  "background": "seeded",
+  "canvas": { "width": 1280, "height": 960 },
+  "png": "/tmp/claude-draw/draw-20260902-142207-3.png",
+  "stroke_count": 4,
+  "strokes": [
+    { "tool": "box", "colour": "#e11d48", "color": "#e11d48", "size": 4,
+      "from": { "x": 210, "y": 90 }, "to": { "x": 480, "y": 220 } },
+    { "tool": "pen", "colour": "#2563eb", "color": "#2563eb", "size": 4,
+      "points": [ { "x": 12.4, "y": 88.1, "p": 0.5 } ] },
+    { "tool": "fill", "mode": "shape", "colour": "#16a34a", "color": "#16a34a",
+      "at": { "x": 300, "y": 150 } }
+  ]
+}
+```
+
+Notes on reading it:
+
+- **Colour is under both `colour` and `color`.** Same value, spelled both ways, so you never
+  have to guess which one this file uses.
+- `tool` is one of `pen`, `line`, `arrow`, `box`, `ellipse`, `fill`, `eraser`.
+- `pen` and `eraser` strokes have `points` (with `p` for pen pressure); `line`, `arrow`, `box`
+  and `ellipse` have `from` and `to`; `fill` has `at` and a `mode` of `shape` or `image`.
+- Coordinates are in canvas pixels, origin top-left, matching the PNG exactly.
+- A caption is also appended to `log.jsonl` in the same directory as each drawing lands, so it
+  survives even if the reply never reaches you.
+
 ## Reading the drawing
 
 Blank sketches and annotations fail in different ways:
@@ -108,9 +154,8 @@ Blank sketches and annotations fail in different ways:
   marks only carry position and intent, which is the reliable half.
 - **Say what you see before acting on it.** Describe the marks back in one line so a misread
   gets caught immediately instead of three steps later.
-- The stroke data file records each mark's tool, colour and coordinates. Reading it is a good
-  way to be precise about what was marked and where, and to tell deliberate handwriting from
-  scribble.
+- The stroke data is a good way to be precise about what was marked and where, and to tell
+  deliberate handwriting from scribble.
 
 Colour convention the user may lean on, worth reading as meaningful when it fits:
 red for wrong or remove, green for wanted or add, blue for a note, amber for uncertain.

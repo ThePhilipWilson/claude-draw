@@ -150,6 +150,8 @@ const TOOLS = [
 
 // How a settled request reads back to Claude. Everything the drawing carries is named
 // here, including where the caption and stroke data were written, so nothing has to be
+// guessed at from the filename. Everything the drawing carries is named
+// here, including where the caption and stroke data were written, so nothing has to be
 // guessed at from the filename.
 function renderResult(out, timedWaited) {
   if (out.outcome === 'drawing') {
@@ -158,7 +160,8 @@ function renderResult(out, timedWaited) {
       'Image: ' + out.path,
       'Caption: ' + (out.caption || '(none given)'),
       'Background: ' + out.background + (out.background === 'blank' ? ' (drawn from scratch)' : ' (marks on top of an image)'),
-      out.strokes_path ? 'Stroke data: ' + out.strokes_path : '',
+      out.meta_path ? 'Caption, prompt and stroke data together: ' + out.meta_path : '',
+      out.strokes_path ? 'Stroke data on its own (' + out.stroke_count + ' marks): ' + out.strokes_path : '',
       '',
       'Read the image now. Describe what you see before acting on it, and trust the caption over your own reading where they disagree.'
     ].filter(Boolean).join('\n'));

@@ -645,6 +645,17 @@
     setTimeout(function () { f.classList.remove('show'); }, 2400);
   }
 
+  // Colour goes out under both spellings. Claude reads this file to be precise about
+  // what was marked, and guessing which spelling it is should not be part of that.
+  function strokesOut() {
+    return strokes.map(function (s) {
+      var out = {};
+      Object.keys(s).forEach(function (k) { out[k] = s[k]; });
+      if (out.colour) out.color = out.colour;
+      return out;
+    });
+  }
+
   function flatten() {
     var out = document.createElement('canvas');
     out.width = W; out.height = H;
@@ -690,7 +701,8 @@
       body: JSON.stringify({
         id: currentId, png: png,
         caption: captionEl.value,
-        background: backgroundKind, strokes: strokes
+        background: backgroundKind, strokes: strokesOut(),
+        width: W, height: H
       })
     }).then(function (r) {
       sending = false;

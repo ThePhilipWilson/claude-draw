@@ -111,7 +111,8 @@ function sse(onEvent, url) {
   const collecting = postJson('/collect', { id: asked.id, wait_seconds: 20 });
   await sleep(200);
   const sub = await postJson('/submit', {
-    id: asked.id, png: DATA_URL, caption: 'the header', background: 'seeded', strokes: [{ tool: 'box' }]
+    id: asked.id, png: DATA_URL, caption: 'the header\nsecond line', background: 'seeded',
+    width: 2, height: 2, strokes: [{ tool: 'box', colour: '#e11d48', color: '#e11d48' }]
   });
   check('submit accepted', sub.ok === true);
   check('canvas told somebody was waiting', sub.waiting === true);
@@ -119,9 +120,22 @@ function sse(onEvent, url) {
   const result = await collecting;
   check('waiting collect returned the drawing', result.ok === true && result.outcome === 'drawing', 'outcome=' + result.outcome);
   check('png written to disk', fs.existsSync(result.path), path.basename(result.path || ''));
-  check('caption returned', result.caption === 'the header');
+  check('caption returned', result.caption === 'the header\nsecond line');
   check('background kind returned', result.background === 'seeded');
   check('stroke data written', !!result.strokes_path && fs.existsSync(result.strokes_path));
+
+  console.log('\n=== the caption is on disk, not just in the reply ===');
+  const meta = JSON.parse(fs.readFileSync(result.meta_path, 'utf8'));
+  check('sidecar json written next to the png', !!result.meta_path && fs.existsSync(result.meta_path), path.basename(result.meta_path || ''));
+  check('sidecar keeps the caption', meta.caption === 'the header\nsecond line');
+  check('sidecar keeps the prompt that was answered', meta.prompt === 'Circle the wrong bit');
+  check('sidecar keeps the strokes', Array.isArray(meta.strokes) && meta.strokes.length === 1);
+  check('sidecar records the canvas size', meta.canvas.width === 2 && meta.canvas.height === 2);
+  check('sidecar names its own schema', meta.schema === 'claude-draw/submission@1');
+  const strokeOne = JSON.parse(fs.readFileSync(result.strokes_path, 'utf8'))[0];
+  check('stroke colour readable under either spelling', strokeOne.colour === '#e11d48' && strokeOne.color === '#e11d48');
+  const logLines = fs.readFileSync(path.join(OUT, 'log.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  check('caption also appended to log.jsonl', logLines.length === 1 && logLines[0].caption === 'the header\nsecond line');
 
   console.log('\n=== an answer is kept for a late collector ===');
   const beforeCollect = await (await fetch(BASE + '/state')).json();
@@ -181,7 +195,7 @@ function sse(onEvent, url) {
   check('lapsed request is still the open one, not discarded',
     (await (await fetch(BASE + '/state')).json()).active.stale === true);
   const lateSend = await postJson('/submit', {
-    id: asked5Id, png: DATA_URL, caption: 'sent late', background: 'blank', strokes: []
+    id: asked5Id, png: DATA_URL, caption: 'sent late', background: 'blank', width: 2, height: 2, strokes: []
   });
   check('a lapsed request still accepts the drawing', lateSend.ok === true);
   check('canvas told nobody was waiting for it', lateSend.waiting === false);
@@ -298,11 +312,12 @@ function sse(onEvent, url) {
   const openId = ((await (await fetch(BASE + '/state')).json()).active || {}).id;
   check('the request is still live on the canvas', !!openId);
 
-  await postJson('/submit', { id: openId, png: DATA_URL, caption: 'here you go', background: 'blank', strokes: [] });
+  await postJson('/submit', { id: openId, png: DATA_URL, caption: 'here you go', background: 'blank', width: 2, height: 2, strokes: [] });
   rpc({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'collect_drawing', arguments: { id: openId, wait_seconds: 0 } } });
   await sleep(700);
   check('collect_drawing picks up the drawing sent meanwhile', /submitted a drawing/.test(said(7)));
   check('collect_drawing reports the caption', /here you go/.test(said(7)));
+  check('collect_drawing points at the sidecar', /Caption, prompt and stroke data together/.test(said(7)));
 
   console.log('\n--- an interrupt lets go of the socket ---');
   rpc({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'request_drawing', arguments: { prompt: 'take your time', wait_seconds: 120 } } });

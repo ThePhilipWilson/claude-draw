@@ -67,6 +67,10 @@ underneath it. **Fill: image** also stops at edges in the picture, for colouring
 screenshot you have not outlined yourself. Either way the paint lands on the marks layer, so
 the eraser lifts it without damaging the image.
 
+Your caption is written to disk next to the PNG the moment you send it, along with the prompt
+you were answering and every stroke, and appended to a `log.jsonl` alongside. If the reply
+never reaches Claude, the words are still there.
+
 Send shows you the flattened image and caption first, with `Enter` to confirm and `Esc` to go
 back. It tells you whether Claude was waiting or will pick it up next turn. "Send me a screenshot" is the other direction: it tells Claude to capture something and
 send it back for you to annotate, which beats hunting for a file on a tablet. Whatever is in

@@ -388,23 +388,53 @@ const server = http.createServer((req, res) => {
 });
 
 // ---- writing a submission -------------------------------------------------
+// Three files per drawing, because the PNG is the only part that can be reconstructed
+// from a screenshot afterwards. The caption exists for one moment only, so it goes to
+// disk before anything else can go wrong, and again into an append-only log.
 function writeSubmission(r, body) {
   const stem = 'draw-' + stamp(r.id);
   const pngPath = path.join(r.outDir, stem + '.png');
   fs.writeFileSync(pngPath, Buffer.from(String(body.png).replace(/^data:image\/png;base64,/, ''), 'base64'));
 
+  const caption = String(body.caption || '').trim();
+  const strokes = Array.isArray(body.strokes) ? body.strokes : [];
+  const meta = {
+    schema: 'claude-draw/submission@1',
+    id: r.id,
+    at: new Date().toISOString(),
+    prompt: r.prompt || null,
+    caption: caption,
+    background: body.background || 'blank',
+    canvas: { width: body.width || null, height: body.height || null },
+    png: pngPath,
+    stroke_count: strokes.length,
+    note: 'Every stroke carries its colour under both "colour" and "color"; they are the same value.',
+    strokes: strokes
+  };
+  const metaPath = path.join(r.outDir, stem + '.json');
+  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+
   let strokesPath = null;
-  if (body.strokes) {
+  if (strokes.length) {
     strokesPath = path.join(r.outDir, stem + '.strokes.json');
-    fs.writeFileSync(strokesPath, JSON.stringify(body.strokes));
+    fs.writeFileSync(strokesPath, JSON.stringify(strokes));
   }
+
+  // Append-only, one line per drawing, so a caption survives even if the reply to
+  // Claude never lands.
+  try {
+    fs.appendFileSync(path.join(r.outDir, 'log.jsonl'), JSON.stringify({
+      at: meta.at, id: r.id, prompt: meta.prompt, caption: caption,
+      background: meta.background, png: pngPath, meta: metaPath, strokes: strokesPath
+    }) + '\n');
+  } catch (e) { /* logging must never fail a submission */ }
 
   return {
     result: {
       ok: true, outcome: 'drawing', id: r.id,
-      path: pngPath, strokes_path: strokesPath,
-      caption: String(body.caption || '').trim(),
-      background: body.background || 'blank',
+      path: pngPath, meta_path: metaPath, strokes_path: strokesPath,
+      caption: caption, prompt: meta.prompt,
+      background: meta.background, stroke_count: strokes.length,
       late: !!r.stale
     }
   };
