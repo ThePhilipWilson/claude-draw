@@ -8,7 +8,6 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const os = require('os');
 const fs = require('fs');
 
 const PORT = parseInt(process.env.CLAUDE_DRAW_PORT || '7331', 10);
@@ -18,10 +17,20 @@ const BASE = 'http://127.0.0.1:' + PORT;
 const LAN = /^(1|true|yes|on)$/i.test(process.env.CLAUDE_DRAW_LAN || '');
 const DAEMON = path.join(__dirname, 'daemon.js');
 const NAME = 'claude-draw';
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
+
+// How long a tool call is willing to sit and wait before handing the turn back. Short
+// enough that the user can carry on talking while they draw; long enough that a quick
+// sketch still comes back inside the call that asked for it.
+const DEFAULT_WAIT = 45;
+const MAX_WAIT = 300;
 
 const log = (m) => process.stderr.write('[claude-draw] ' + m + '\n');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// In-flight waits, so an interrupt on the Claude side lets go of the socket instead of
+// leaving it hanging. The request itself stays live on the canvas either way.
+const inflight = new Map();
 
 // ---- daemon lifecycle -----------------------------------------------------
 async function state() {
@@ -47,6 +56,16 @@ async function ensureDaemon() {
   throw new Error('daemon did not come up on port ' + PORT);
 }
 
+async function post(route, body, signal) {
+  const r = await fetch(BASE + route, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: signal
+  });
+  return r.json();
+}
+
 function openBrowser(url) {
   try {
     if (process.platform === 'win32') spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
@@ -61,6 +80,8 @@ function urlLines(s) {
   (s.urls.lan || []).forEach((l) => out.push('Other devices: ' + l.url + '  (' + l.iface + ')'));
   if (!s.lan) out.push('Other devices: off. Set CLAUDE_DRAW_LAN=1 and restart the daemon to allow them.');
   else if (!(s.urls.lan || []).length) out.push('Other devices: on, but no non-loopback IPv4 address was found.');
+  else if (s.code) out.push('Pairing code for that device: ' + s.code.slice(0, 3) + '-' + s.code.slice(3) +
+    '  (asked for once per device, then remembered)');
   return out;
 }
 
@@ -78,11 +99,13 @@ const TOOLS = [
   {
     name: 'request_drawing',
     description:
-      'Ask the user to draw or annotate something, and wait for their answer. Opens on any device ' +
-      'with the canvas page open (phone, tablet, Chromebook, this machine). Pass image_path to have ' +
-      'them mark up a screenshot or image; omit it for a blank sketch. Blocks until they submit, skip, ' +
-      'or the timeout passes. Use this whenever a visual or spatial question would be faster pointed at ' +
-      'than described: "which element", "where should it go", "what should this look like".',
+      'Ask the user to draw or annotate something. Opens on any device with the canvas page open ' +
+      '(phone, tablet, this machine). Pass image_path to have them mark up a screenshot or image; ' +
+      'omit it for a blank sketch. Waits a short while for the answer and then hands the turn back ' +
+      'with outcome "pending" rather than blocking the conversation: the request stays live on the ' +
+      'canvas, the user carries on drawing while you carry on talking, and collect_drawing picks the ' +
+      'answer up whenever it lands. Use this whenever a visual or spatial question would be faster ' +
+      'pointed at than described: "which element", "where should it go", "what should this look like".',
     inputSchema: {
       type: 'object',
       properties: {
@@ -91,42 +114,141 @@ const TOOLS = [
           description: 'The specific instruction shown to the user, e.g. "Circle the element that should move and draw an arrow where it goes". Be specific; this is your question and the drawing is their answer.'
         },
         image_path: { type: 'string', description: 'Absolute path to an image to annotate (png/jpg/gif/webp/bmp). Omit for a blank canvas.' },
-        timeout_seconds: { type: 'number', description: 'How long to wait. Default 600, max 3600.' },
-        out_dir: { type: 'string', description: 'Where to write the resulting PNG. Defaults to the system temp dir.' }
+        wait_seconds: { type: 'number', description: 'How long this call waits before returning "pending" and letting the conversation continue. Default 45, max 300. Use 0 to ask and return immediately.' },
+        expires_seconds: { type: 'number', description: 'How long the request stays live on the canvas. Default 1800, max 21600. The user is asked whether they are still there before it lapses, and a lapsed request can still be sent.' },
+        out_dir: { type: 'string', description: 'Where to write the resulting PNG, stroke data and caption. Defaults to the system temp dir.' }
       },
       required: ['prompt']
     }
   },
   {
+    name: 'collect_drawing',
+    description:
+      'Pick up the answer to a request_drawing that came back "pending". Returns the drawing if it ' +
+      'has arrived, otherwise waits a short while and says it is still being drawn. Call it when the ' +
+      'user says they have sent something, or before you act on anything you asked them to mark up. ' +
+      'Answers are kept, so a drawing sent while you were doing something else is never lost.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'number', description: 'The request id from request_drawing. Omit for the most recent one.' },
+        wait_seconds: { type: 'number', description: 'How long to wait if it has not arrived yet. Default 45, max 300. Use 0 to check without waiting.' }
+      }
+    }
+  },
+  {
     name: 'draw_status',
-    description: 'Check whether the drawing daemon is running and whether a canvas page is currently connected, get the URLs to open it on this machine or another device, and see whether other devices are allowed to reach it at all.',
+    description: 'Check whether the drawing daemon is running, whether a canvas page is connected, and whether anything is waiting to be drawn or waiting to be collected. Gives the URLs to open the canvas on this machine or another device, and the pairing code another device needs.',
     inputSchema: { type: 'object', properties: {} }
   },
   {
     name: 'open_canvas',
-    description: 'Open the canvas page in the default browser on this machine. Only useful when the user is at this computer; on another device they open the LAN URL instead.',
+    description: 'Open the canvas page in the default browser on this machine, and report both the local and network URLs.',
     inputSchema: { type: 'object', properties: {} }
   }
 ];
 
-async function callTool(name, args) {
+// How a settled request reads back to Claude. Everything the drawing carries is named
+// here, including where the caption and stroke data were written, so nothing has to be
+// guessed at from the filename.
+function renderResult(out, timedWaited) {
+  if (out.outcome === 'drawing') {
+    return text([
+      'The user submitted a drawing' + (out.late ? ' after the request had lapsed' : '') + '.',
+      'Image: ' + out.path,
+      'Caption: ' + (out.caption || '(none given)'),
+      'Background: ' + out.background + (out.background === 'blank' ? ' (drawn from scratch)' : ' (marks on top of an image)'),
+      out.strokes_path ? 'Stroke data: ' + out.strokes_path : '',
+      '',
+      'Read the image now. Describe what you see before acting on it, and trust the caption over your own reading where they disagree.'
+    ].filter(Boolean).join('\n'));
+  }
+  if (out.outcome === 'want_screenshot') {
+    return text([
+      'The user pressed "Send me a screenshot": they want something to annotate rather than a blank canvas.',
+      out.note ? 'What they asked for: ' + out.note : 'They did not say what of, so use the thing you are both currently working on.',
+      '',
+      'Capture or locate the relevant image now, then call request_drawing again with image_path set to it.',
+      'They are waiting on the canvas, so do this straight away rather than asking a follow-up question.'
+    ].join('\n'));
+  }
+  if (out.outcome === 'cancelled') {
+    return text('The user skipped this request. Carry on without a drawing; do not ask again unprompted.');
+  }
+  if (out.outcome === 'timeout') {
+    return text([
+      'Request ' + out.id + ' lapsed before anything was sent.',
+      'It is still on their canvas and anything they draw can still be sent, so try collect_drawing again later.',
+      'Do not re-ask unless they say they missed it.'
+    ].join('\n'));
+  }
+  if (out.outcome === 'pending') {
+    return text([
+      'Request ' + out.id + ' is ' + (out.state === 'queued' ? 'queued behind another one' : 'open on the canvas') + '; nothing sent yet after ' + timedWaited + 's.',
+      out.canvases ? 'A canvas page is connected, so they can see it.' : 'No canvas page is connected, so nobody has seen it yet.',
+      '',
+      'Not blocking. Carry on with the conversation, and call collect_drawing(' + out.id + ') when they say they have sent it or when you next need the answer.'
+    ].join('\n'));
+  }
+  return text('Unexpected outcome: ' + JSON.stringify(out));
+}
+
+async function collect(id, wait, callId) {
+  // One controller for both the interrupt and the backstop timeout: AbortSignal.any is
+  // Node 20+, and this has to run on 18.
+  const ac = new AbortController();
+  const cap = setTimeout(() => ac.abort(new Error('daemon did not answer in time')), (wait + 20) * 1000);
+  if (callId !== undefined) inflight.set(callId, ac);
+  try {
+    return await post('/collect', { id: id, wait_seconds: wait }, ac.signal);
+  } finally {
+    clearTimeout(cap);
+    if (callId !== undefined) inflight.delete(callId);
+  }
+}
+
+async function callTool(name, args, callId) {
   args = args || {};
 
   if (name === 'draw_status') {
     const s = await state();
     if (!s) return text('Daemon is not running. It starts automatically on the next request_drawing call.');
-    return text([
+    const lines = [
       'Daemon running (pid ' + s.pid + ', port ' + s.port + ').',
       'Canvas pages connected: ' + s.canvases + (s.canvases ? '' : '  <- nobody is looking at it yet'),
-      s.active ? 'A request is currently open on the canvas.' : 'Idle, waiting for a request.',
-      ''
-    ].concat(urlLines(s), [lanMismatch(s)].filter(Boolean)).join('\n'));
+      s.active
+        ? 'Open on the canvas now: request ' + s.active.id + (s.active.stale ? ' (lapsed, but still sendable)' : '')
+        : 'Idle, waiting for a request.'
+    ];
+    if (s.queued) lines.push('Queued behind it: ' + s.queued);
+    if ((s.uncollected || []).length) {
+      lines.push('Drawings waiting to be collected: ' + s.uncollected.join(', ') + '  <- call collect_drawing on these');
+    }
+    lines.push('');
+    return text(lines.concat(urlLines(s), [lanMismatch(s)].filter(Boolean)).join('\n'));
   }
 
   if (name === 'open_canvas') {
     const s = await ensureDaemon();
     const ok = openBrowser(s.urls.local);
     return text((ok ? 'Opened ' : 'Could not launch a browser. Open ') + s.urls.local + ' manually.\n' + urlLines(s).join('\n'));
+  }
+
+  if (name === 'collect_drawing') {
+    const s = await state();
+    if (!s) return text('Daemon is not running, so there is nothing to collect.', true);
+    const wait = Math.max(0, Math.min(MAX_WAIT, args.wait_seconds === undefined ? DEFAULT_WAIT : Number(args.wait_seconds)));
+    let out;
+    try {
+      out = await collect(args.id ? Number(args.id) : null, wait, callId);
+    } catch (e) {
+      return text('Collect failed: ' + e.message, true);
+    }
+    if (!out.ok && /no request/.test(out.error || '')) {
+      return text('There is no request ' + (args.id || '') + ' to collect. Nothing has been asked for, or it was asked for by a different session.', true);
+    }
+    if (!out.ok) return text('Collect failed: ' + (out.error || 'unknown'), true);
+    return renderResult(out, wait);
   }
 
   if (name === 'request_drawing') {
@@ -139,53 +261,37 @@ async function callTool(name, args) {
       // Nobody is watching. Try this machine's browser, but say so either way.
       openBrowser(s.urls.local);
     }
-    const timeout = Math.max(30, Math.min(3600, Number(args.timeout_seconds) || 600));
-    let r;
+    const wait = Math.max(0, Math.min(MAX_WAIT, args.wait_seconds === undefined ? DEFAULT_WAIT : Number(args.wait_seconds)));
+    let asked;
     try {
-      r = await fetch(BASE + '/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: args.prompt,
-          image_path: args.image_path ? path.resolve(args.image_path) : null,
-          out_dir: args.out_dir || null,
-          timeout_seconds: timeout
-        }),
-        signal: AbortSignal.timeout((timeout + 30) * 1000)
-      });
+      asked = await post('/request', {
+        prompt: args.prompt,
+        image_path: args.image_path ? path.resolve(args.image_path) : null,
+        out_dir: args.out_dir || null,
+        expires_seconds: args.expires_seconds || null
+      }, AbortSignal.timeout(10000));
     } catch (e) {
       return text('Request failed: ' + e.message, true);
     }
-    const out = await r.json();
-    if (!out.ok) return text('Request rejected: ' + (out.error || 'unknown'), true);
+    if (!asked.ok) return text('Request rejected: ' + (asked.error || 'unknown'), true);
 
-    if (out.outcome === 'drawing') {
-      return text([
-        'The user submitted a drawing.',
-        'Image: ' + out.path,
-        'Caption: ' + (out.caption || '(none given)'),
-        'Background: ' + out.background + (out.background === 'blank' ? ' (drawn from scratch)' : ' (marks on top of an image)'),
-        out.strokes_path ? 'Stroke data: ' + out.strokes_path : '',
-        '',
-        'Read the image now. Describe what you see before acting on it, and trust the caption over your own reading where they disagree.'
-      ].filter(Boolean).join('\n'));
+    let out;
+    try {
+      out = await collect(asked.id, wait, callId);
+    } catch (e) {
+      // Interrupted or dropped. The request is still live on the canvas, which is the
+      // whole point of asking and collecting separately.
+      return text('Stopped waiting on request ' + asked.id + ' (' + e.message + '). It is still open on the canvas; call collect_drawing(' + asked.id + ') to pick it up.');
     }
-    if (out.outcome === 'want_screenshot') {
-      return text([
-        'The user pressed "Send me a screenshot": they want something to annotate rather than a blank canvas.',
-        out.note ? 'What they asked for: ' + out.note : 'They did not say what of, so use the thing you are both currently working on.',
-        '',
-        'Capture or locate the relevant image now, then call request_drawing again with image_path set to it.',
-        'They are waiting on the canvas, so do this straight away rather than asking a follow-up question.'
-      ].join('\n'));
-    }
-    if (out.outcome === 'cancelled') return text('The user skipped this request. Carry on without a drawing; do not ask again unprompted.');
-    if (out.outcome === 'timeout') {
+    if (out.outcome === 'pending' && !s.canvases) {
       const now = await state();
-      return text('Nobody answered within ' + timeout + 's.' +
-        (now && !now.canvases ? ' No canvas page is open: ask the user to open ' + ((now.urls.lan || [])[0] ? now.urls.lan[0].url : now.urls.local) + '.' : ' The canvas is open but was left untouched.'));
+      return text([
+        'Asked (request ' + out.id + '), but no canvas page is connected, so nobody has seen it.',
+        'Ask the user to open one of these and leave the tab open:',
+        ''
+      ].concat(urlLines(now || s), ['', 'Then call collect_drawing(' + out.id + ').']).join('\n'));
     }
-    return text('Unexpected outcome: ' + JSON.stringify(out));
+    return renderResult(out, wait);
   }
 
   return text('Unknown tool: ' + name, true);
@@ -208,12 +314,19 @@ async function handle(msg) {
       serverInfo: { name: NAME, version: VERSION }
     });
   }
-  if (method === 'notifications/initialized' || method === 'notifications/cancelled') return;
+  // An interrupt on the Claude side. Let go of the socket we are holding; the request
+  // stays open on the canvas so the user's drawing is not thrown away.
+  if (method === 'notifications/cancelled') {
+    const ac = inflight.get(params && params.requestId);
+    if (ac) { inflight.delete(params.requestId); ac.abort(new Error('cancelled by the client')); }
+    return;
+  }
+  if (method === 'notifications/initialized') return;
   if (method === 'ping') return reply(id, {});
   if (method === 'tools/list') return reply(id, { tools: TOOLS });
   if (method === 'tools/call') {
     try {
-      const result = await callTool(params && params.name, params && params.arguments);
+      const result = await callTool(params && params.name, params && params.arguments, id);
       return reply(id, result);
     } catch (e) {
       return reply(id, text('claude-draw error: ' + e.message, true));

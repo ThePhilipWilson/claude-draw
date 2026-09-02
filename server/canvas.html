@@ -5,10 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Canvas for Claude</title>
 <style>
+  /* Every colour in the page comes from here, so the palette is one block. */
   :root {
     --bg: #1b1d21; --panel: #24272c; --edge: #34383f;
-    --text: #e6e8ea; --muted: #9aa0a8; --accent: #d97757;
-    --good: #4ade80; --bad: #f87171;
+    --text: #e6e8ea; --muted: #9aa0a8; --accent: #d97757; --onAccent: #1b1d21;
+    --btn: #2e3238; --btnHover: #383d44;
+    --askBg: #2f2119; --askEdge: #4a3527; --askText: #f2d9c9;
+    --paper: #ffffff; --shadow: rgba(0,0,0,.5); --veil: rgba(12,13,15,.82);
+    --good: #4ade80; --bad: #f87171; --onGood: #10261a;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -20,24 +24,30 @@
   body { display: flex; flex-direction: column; }
 
   #ask { display: none; gap: 10px; align-items: baseline; flex: 0 0 auto;
-    padding: 10px 14px; background: #2f2119; border-bottom: 1px solid #4a3527; color: #f2d9c9; }
+    padding: 10px 14px; background: var(--askBg); border-bottom: 1px solid var(--askEdge); color: var(--askText); }
   #ask.show { display: flex; }
   #ask b { color: var(--accent); flex: 0 0 auto; letter-spacing: .04em; font-size: 12px; text-transform: uppercase; }
+
+  /* "Are you still there" and "Claude stopped waiting" share one strip. Neither is an
+     error and neither takes the drawing away, so it sits under the prompt, not over it. */
+  #nudge { display: none; gap: 12px; align-items: center; flex: 0 0 auto; flex-wrap: wrap;
+    padding: 9px 14px; background: var(--askBg); border-bottom: 1px solid var(--askEdge); color: var(--askText); }
+  #nudge.show { display: flex; }
+  #nudge span { flex: 1 1 240px; }
 
   .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
     background: var(--panel); border-bottom: 1px solid var(--edge); flex: 0 0 auto; flex-wrap: wrap; }
   .bar.bottom { border-bottom: none; border-top: 1px solid var(--edge); }
 
-  button { font: inherit; color: var(--text); background: #2e3238; border: 1px solid var(--edge);
+  button { font: inherit; color: var(--text); background: var(--btn); border: 1px solid var(--edge);
     border-radius: 6px; padding: 7px 12px; cursor: pointer; min-height: 38px; }
-  button:hover { background: #383d44; }
-  button.on { background: var(--accent); border-color: var(--accent); color: #1b1d21; font-weight: 600; }
+  button:hover { background: var(--btnHover); }
+  button.on { background: var(--accent); border-color: var(--accent); color: var(--onAccent); font-weight: 600; }
   button:disabled { opacity: .4; cursor: default; }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid var(--edge); min-height: 0; }
-  .swatch.on { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
-
+  .swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
   .sep { width: 1px; height: 26px; background: var(--edge); margin: 0 4px; }
   .spacer { flex: 1 1 auto; }
   .hint { color: var(--muted); font-size: 12px; }
@@ -48,23 +58,23 @@
 
   #stage { flex: 1 1 auto; position: relative; display: flex; align-items: center;
     justify-content: center; padding: 10px; min-height: 0; }
-  #wrap { position: relative; line-height: 0; box-shadow: 0 6px 24px rgba(0,0,0,.5);
+  #wrap { position: relative; line-height: 0; box-shadow: 0 6px 24px var(--shadow);
     border-radius: 4px; overflow: hidden; }
   #wrap canvas { display: block; touch-action: none; }
-  #bg { background: #fff; }
+  #bg { background: var(--paper); }
   #board { position: absolute; inset: 0; cursor: none; }
 
   #ring { position: fixed; pointer-events: none; border: 1px solid #000; border-radius: 50%;
     mix-blend-mode: difference; display: none; box-shadow: 0 0 0 1px rgba(255,255,255,.6) inset; }
 
   #drop { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center;
-    background: rgba(27,29,33,.86); border: 3px dashed var(--accent); font-size: 20px; color: var(--accent); }
+    background: var(--veil); border: 3px dashed var(--accent); font-size: 20px; color: var(--accent); }
   #drop.show { display: flex; }
 
   #caption { flex: 1 1 320px; min-width: 200px; font: inherit; color: var(--text);
-    background: #2e3238; border: 1px solid var(--edge); border-radius: 6px; padding: 9px 11px; min-height: 38px; }
-  #caption::placeholder { color: #6f757d; }
-  #send { background: var(--accent); border-color: var(--accent); color: #1b1d21; font-weight: 600; padding: 9px 20px; }
+    background: var(--btn); border: 1px solid var(--edge); border-radius: 6px; padding: 9px 11px; min-height: 38px; }
+  #caption::placeholder { color: var(--muted); }
+  #send { background: var(--accent); border-color: var(--accent); color: var(--onAccent); font-weight: 600; padding: 9px 20px; }
   #send:hover { filter: brightness(1.08); }
 
   /* Idle: the page's resting state, never a dead end. */
@@ -84,32 +94,44 @@
   @media (prefers-reduced-motion: reduce) { .pulse i { animation: none; opacity: .6; } }
 
   /* Confirm: last look at exactly what Claude will receive. */
-  #confirm { position: fixed; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center;
-    background: rgba(12,13,15,.82); padding: 20px; }
-  #confirm.show { display: flex; }
-  #confirm .sheet { background: var(--panel); border: 1px solid var(--edge); border-radius: 10px;
+  .modal { position: fixed; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center;
+    background: var(--veil); padding: 20px; }
+  .modal.show { display: flex; }
+  .modal .sheet { background: var(--panel); border: 1px solid var(--edge); border-radius: 10px;
     padding: 16px; max-width: min(760px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 12px;
-    box-shadow: 0 18px 50px rgba(0,0,0,.6); }
-  #confirm h3 { margin: 0; font-size: 16px; font-weight: 600; }
+    box-shadow: 0 18px 50px var(--shadow); }
+  .modal h3 { margin: 0; font-size: 16px; font-weight: 600; }
+  .modal .row { display: flex; gap: 10px; justify-content: flex-end; }
   #confirm .shot { flex: 1 1 auto; min-height: 0; display: flex; justify-content: center;
-    background: #14161a; border: 1px solid var(--edge); border-radius: 6px; padding: 8px; }
+    background: var(--bg); border: 1px solid var(--edge); border-radius: 6px; padding: 8px; }
   #confirm img { max-width: 100%; max-height: 46vh; object-fit: contain; }
   #confirmCap { margin: 0; color: var(--muted); font-size: 13px; word-break: break-word; }
   #confirmCap.none { font-style: italic; }
-  #confirm .row { display: flex; gap: 10px; justify-content: flex-end; }
-  #confirmGo { background: var(--accent); border-color: var(--accent); color: #1b1d21; font-weight: 600; padding: 9px 22px; }
+  #confirmGo { background: var(--accent); border-color: var(--accent); color: var(--onAccent); font-weight: 600; padding: 9px 22px; }
+
+  /* Pairing: proof you meant this session, on this network. */
+  #pair .sheet { width: min(440px, 100%); }
+  #pair p { margin: 0; color: var(--muted); }
+  .code { display: flex; gap: 8px; align-items: center; justify-content: center; }
+  .code input { width: 44px; height: 56px; text-align: center; font: 600 24px/1 ui-monospace, Consolas, monospace;
+    color: var(--text); background: var(--btn); border: 1px solid var(--edge); border-radius: 8px;
+    -webkit-user-select: text; user-select: text; }
+  .code input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .code .dash { color: var(--muted); font-size: 20px; }
+  #pairErr { color: var(--bad); min-height: 18px; font-size: 13px; }
 
   #shot { flex: 0 0 auto; }
 
   #flash { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%);
-    background: var(--good); color: #10261a; font-weight: 600; padding: 9px 18px; border-radius: 999px;
-    opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 60; }
+    background: var(--good); color: var(--onGood); font-weight: 600; padding: 9px 18px; border-radius: 999px;
+    opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 60; max-width: 80vw; text-align: center; }
   #flash.show { opacity: 1; }
 </style>
 </head>
 <body>
 
 <div id="ask"><b>Claude asks</b><span id="askText"></span></div>
+<div id="nudge"><span id="nudgeText"></span><button id="stillHere">I'm still drawing</button></div>
 
 <div class="bar">
   <button id="tPen" class="on" title="Pen (P)">Pen</button>
@@ -156,7 +178,7 @@
 <div id="ring"></div>
 <div id="drop">Drop an image to annotate</div>
 
-<div id="confirm">
+<div id="confirm" class="modal">
   <div class="sheet">
     <h3>Send this to Claude?</h3>
     <div class="shot"><img id="confirmImg" alt="Preview of the drawing you are about to send"></div>
@@ -165,6 +187,16 @@
       <button id="confirmBack">Back to editing</button>
       <button id="confirmGo">Send</button>
     </div>
+  </div>
+</div>
+
+<div id="pair" class="modal">
+  <div class="sheet">
+    <h3>Connect this device</h3>
+    <p>Claude Code is showing a six-digit code for this session. Type it in to make sure you are joining the right one.</p>
+    <div class="code" id="codeBoxes"></div>
+    <p id="pairErr"></p>
+    <div class="row"><button id="pairGo">Connect</button></div>
   </div>
 </div>
 
@@ -185,16 +217,38 @@
   var idle = document.getElementById('idle');
   var dot = document.getElementById('dot');
   var hint = document.getElementById('hint');
+  var captionEl = document.getElementById('caption');
+
+  document.getElementById('idleUrl').textContent = location.origin + '/';
 
   var W = BLANK_W, H = BLANK_H;
   var backgroundKind = 'blank';
   var currentId = null;
+  var expired = false;
 
   var COLOURS = ['#e11d48', '#2563eb', '#16a34a', '#f59e0b', '#a21caf', '#111111'];
   var state = { tool: 'pen', colour: COLOURS[0], size: 4, fillMode: 'shape', pressureSeen: false };
   var history = [], HISTORY_MAX = 15, strokes = [], current = null;
 
-  document.getElementById('idleUrl').textContent = location.origin + '/';
+  function store(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
+  function stored(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+  // ---- talking to the daemon -------------------------------------------
+  // A device that is not on loopback pairs once and keeps the token, so this is the
+  // only place that has to care whether we are local or on someone's phone.
+  var TOKEN = stored('claude-draw-token') || '';
+  function headers() {
+    var h = { 'Content-Type': 'application/json' };
+    if (TOKEN) h['x-draw-token'] = TOKEN;
+    return h;
+  }
+  function tokened(url) {
+    if (!TOKEN) return url;
+    return url + (url.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(TOKEN);
+  }
+  function api(route, body) {
+    return fetch(route, { method: 'POST', headers: headers(), body: JSON.stringify(body || {}) });
+  }
 
   // ---- sizing ----------------------------------------------------------
   function resize(w, h) {
@@ -528,33 +582,57 @@
   });
 
   // ---- request lifecycle ----------------------------------------------
+  var nudge = document.getElementById('nudge'), nudgeText = document.getElementById('nudgeText');
+  var stillBtn = document.getElementById('stillHere');
+  function showNudge(msg, canExtend) {
+    nudgeText.textContent = msg;
+    stillBtn.style.display = canExtend ? '' : 'none';
+    nudge.classList.add('show');
+  }
+  function hideNudge() { nudge.classList.remove('show'); }
+  stillBtn.addEventListener('click', function () {
+    if (currentId === null) return;
+    api('/extend', { id: currentId }).catch(function () {});
+    hideNudge();
+  });
+
   function goIdle(title, text) {
-    currentId = null;
-    closeConfirm();
+    currentId = null; expired = false;
+    closeConfirm(); hideNudge();
     document.getElementById('ask').classList.remove('show');
     document.getElementById('idleTitle').textContent = title || 'Waiting for Claude';
     document.getElementById('idleText').textContent = text ||
       'This page stays open. When Claude asks for a sketch or sends something to annotate, it appears here automatically.';
     idle.classList.remove('hide');
-    document.getElementById('caption').value = '';
-    document.getElementById('send').disabled = false;
-    document.getElementById('send').textContent = 'Send to Claude';
+    captionEl.value = '';
+    resetSend();
     hint.textContent = 'idle';
   }
 
+  function resetSend() {
+    var b = document.getElementById('send');
+    b.disabled = false; b.textContent = 'Send to Claude';
+  }
+
+  // Reconnecting mid-request lands here with the same id. Redrawing the background then
+  // would wipe whatever has been drawn since, so the same request is left alone.
   function goActive(req) {
+    var resuming = (currentId !== null && String(req.id) === String(currentId));
     currentId = req.id;
+    expired = !!req.stale;
     if (req.prompt) {
       document.getElementById('askText').textContent = req.prompt;
       document.getElementById('ask').classList.add('show');
     } else {
       document.getElementById('ask').classList.remove('show');
     }
-    document.getElementById('caption').value = '';
-    document.getElementById('send').disabled = false;
-    document.getElementById('send').textContent = 'Send to Claude';
+    if (expired) showNudge('Claude stopped waiting for this one. Your drawing is safe: send it and Claude will pick it up next time it checks.', true);
+    else hideNudge();
+    if (resuming) { idle.classList.add('hide'); return; }
+    captionEl.value = '';
+    resetSend();
     var reveal = function () { idle.classList.add('hide'); setTimeout(fit, 30); };
-    if (req.image) { useImage(req.image + '?t=' + Date.now(), 'seeded', reveal); }
+    if (req.image) { useImage(tokened(req.image + '?t=' + Date.now()), 'seeded', reveal); }
     else { blankBackground(); hint.textContent = 'blank canvas'; reveal(); }
     if (document.hidden && window.Notification && Notification.permission === 'granted') {
       try { new Notification('Claude wants a drawing', { body: req.prompt || 'Open the canvas' }); } catch (e) {}
@@ -564,7 +642,7 @@
   function flash(msg) {
     var f = document.getElementById('flash');
     f.textContent = msg; f.classList.add('show');
-    setTimeout(function () { f.classList.remove('show'); }, 1600);
+    setTimeout(function () { f.classList.remove('show'); }, 2400);
   }
 
   function flatten() {
@@ -583,7 +661,7 @@
     if (sending || currentId === null || confirmBox.classList.contains('show')) return;
     pendingPng = flatten();
     document.getElementById('confirmImg').src = pendingPng;
-    var cap = document.getElementById('caption').value.trim();
+    var cap = captionEl.value.trim();
     var capEl = document.getElementById('confirmCap');
     capEl.textContent = cap ? 'Caption: ' + cap : 'No caption. Claude reads the marks better with one.';
     capEl.classList.toggle('none', !cap);
@@ -608,16 +686,18 @@
     var btn = document.getElementById('send');
     btn.disabled = true; btn.textContent = 'Sending...';
     fetch('/submit', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: headers(),
       body: JSON.stringify({
         id: currentId, png: png,
-        caption: document.getElementById('caption').value,
+        caption: captionEl.value,
         background: backgroundKind, strokes: strokes
       })
     }).then(function (r) {
       sending = false;
       if (!r.ok) throw new Error('server said ' + r.status);
-      flash('Sent to Claude');
+      return r.json();
+    }).then(function (out) {
+      flash(out.waiting ? 'Sent to Claude' : 'Sent. Claude will pick it up on its next turn.');
       goIdle();
     }).catch(function (err) {
       sending = false; btn.disabled = false; btn.textContent = 'Send to Claude';
@@ -630,24 +710,21 @@
   // Claude captured it than hunt for a file on a tablet.
   document.getElementById('shot').addEventListener('click', function () {
     if (currentId === null) return;
-    fetch('/screenshot', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: currentId, note: document.getElementById('caption').value })
-    }).catch(function () {});
+    api('/screenshot', { id: currentId, note: captionEl.value }).catch(function () {});
     goIdle('Asked Claude for a screenshot',
       'Claude will send one back here to annotate. Anything you had drawn was not sent.');
   });
 
   document.getElementById('cancel').addEventListener('click', function () {
     if (currentId === null) return;
-    fetch('/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: currentId }) })
-      .catch(function () {});
+    api('/cancel', { id: currentId }).catch(function () {});
     goIdle('Skipped', 'Told Claude you are skipping that one. Still listening for the next request.');
   });
 
   // ---- keyboard --------------------------------------------------------
   window.addEventListener('keydown', function (e) {
-    var typing = e.target === document.getElementById('caption');
+    var typing = e.target === captionEl || (e.target && e.target.tagName === 'INPUT');
+    if (pairBox.classList.contains('show')) return;
     if (confirmBox.classList.contains('show')) {
       if (e.key === 'Escape') { e.preventDefault(); return closeConfirm(); }
       if (e.key === 'Enter') { e.preventDefault(); return send(); }
@@ -670,27 +747,171 @@
   });
 
   // ---- live connection -------------------------------------------------
+  // EventSource reconnects itself when the socket closes cleanly. What it does not
+  // notice is a socket that stops delivering without closing, which is exactly what a
+  // backgrounded phone browser leaves behind: the page looks live and is not. The
+  // daemon sends a ping event every 20s, so silence is the signal to tear it down and
+  // start again.
+  var es = null, lastBeat = 0, reconnecting = false;
+  var BEAT_DEAD = 50000;
+
+  function setLive(live, note) {
+    dot.classList.toggle('live', !!live);
+    if (note) hint.textContent = note;
+  }
+
   function connect() {
-    var es = new EventSource('/events');
-    es.addEventListener('open', function () { dot.classList.add('live'); if (currentId === null) hint.textContent = 'idle'; });
-    es.addEventListener('error', function () { dot.classList.remove('live'); hint.textContent = 'reconnecting'; });
-    es.addEventListener('hello', function (m) {
-      var d = JSON.parse(m.data);
-      if (d.active) goActive(d.active); else goIdle();
+    if (es) { try { es.close(); } catch (e) {} }
+    lastBeat = Date.now();
+    es = new EventSource(tokened('/events'));
+    es.addEventListener('open', function () {
+      lastBeat = Date.now();
+      setLive(true, currentId === null ? 'idle' : hint.textContent);
     });
-    es.addEventListener('request', function (m) { goActive(JSON.parse(m.data)); });
+    es.addEventListener('error', function () { setLive(false, 'reconnecting'); });
+    es.addEventListener('ping', function () { lastBeat = Date.now(); setLive(true); });
+    es.addEventListener('hello', function (m) {
+      lastBeat = Date.now(); setLive(true);
+      var d = JSON.parse(m.data);
+      if (d.active) goActive(d.active);
+      else if (currentId !== null) goIdle('Done', 'Still listening. The next request will appear here.');
+      else goIdle();
+    });
+    es.addEventListener('request', function (m) { lastBeat = Date.now(); goActive(JSON.parse(m.data)); });
+    es.addEventListener('expiring', function (m) {
+      lastBeat = Date.now();
+      var d = JSON.parse(m.data);
+      if (String(d.id) !== String(currentId)) return;
+      showNudge('Still there? Claude stops waiting on this in about ' +
+        Math.max(1, Math.round(d.seconds_left / 60)) + ' min. Nothing you have drawn is lost either way.', true);
+    });
+    es.addEventListener('extended', function (m) {
+      lastBeat = Date.now();
+      var d = JSON.parse(m.data);
+      if (String(d.id) !== String(currentId)) return;
+      expired = false; hideNudge(); flash('Told Claude you are still drawing');
+    });
+    es.addEventListener('expired', function (m) {
+      lastBeat = Date.now();
+      var d = JSON.parse(m.data);
+      if (String(d.id) !== String(currentId)) return;
+      expired = true;
+      showNudge('Claude stopped waiting for this one. Your drawing is safe: send it and Claude will pick it up next time it checks.', true);
+    });
     es.addEventListener('settled', function (m) {
+      lastBeat = Date.now();
       var d = JSON.parse(m.data);
       if (currentId !== null && String(d.id) === String(currentId)) {
-        goIdle(d.outcome === 'timeout' ? 'That request timed out' : 'Done',
-               'Still listening. The next request will appear here.');
+        goIdle('Done', 'Still listening. The next request will appear here.');
       }
+    });
+  }
+
+  // Check the daemon still knows us before rebuilding the stream: a restarted daemon
+  // has forgotten every paired device, and silently retrying forever would look
+  // identical to being offline.
+  function recheck() {
+    if (reconnecting) return;
+    reconnecting = true;
+    fetch('/state', { headers: headers(), cache: 'no-store' }).then(function (r) {
+      reconnecting = false;
+      if (r.status === 401) { setLive(false, 'pair again'); return showPair('This session has restarted. Enter the new code.'); }
+      if (!r.ok) throw new Error(r.status);
+      return r.json().then(function () { connect(); });
+    }).catch(function () {
+      reconnecting = false;
+      setLive(false, 'offline');
+      setTimeout(recheck, 3000);
+    });
+  }
+
+  setInterval(function () {
+    if (!es || pairBox.classList.contains('show')) return;
+    if (Date.now() - lastBeat > BEAT_DEAD) { setLive(false, 'reconnecting'); recheck(); }
+  }, 5000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && Date.now() - lastBeat > 25000) recheck();
+  });
+  window.addEventListener('online', recheck);
+
+  // ---- pairing ---------------------------------------------------------
+  var pairBox = document.getElementById('pair');
+  var boxes = [];
+  (function buildCode() {
+    var holder = document.getElementById('codeBoxes');
+    for (var i = 0; i < 6; i++) {
+      if (i === 3) {
+        var dash = document.createElement('span');
+        dash.className = 'dash'; dash.textContent = '-';
+        holder.appendChild(dash);
+      }
+      var input = document.createElement('input');
+      input.type = 'text'; input.inputMode = 'numeric'; input.maxLength = 1;
+      input.autocomplete = 'off';
+      holder.appendChild(input);
+      boxes.push(input);
+    }
+    boxes.forEach(function (b, i) {
+      b.addEventListener('input', function () {
+        b.value = b.value.replace(/\D/g, '').slice(0, 1);
+        if (b.value && i < 5) boxes[i + 1].focus();
+        if (boxes.every(function (x) { return x.value; })) submitCode();
+      });
+      b.addEventListener('keydown', function (e) {
+        if (e.key === 'Backspace' && !b.value && i > 0) { boxes[i - 1].focus(); boxes[i - 1].value = ''; e.preventDefault(); }
+        if (e.key === 'Enter') { e.preventDefault(); submitCode(); }
+      });
+      b.addEventListener('paste', function (e) {
+        var t = (e.clipboardData && e.clipboardData.getData('text') || '').replace(/\D/g, '');
+        if (!t) return;
+        e.preventDefault();
+        for (var n = 0; n < 6; n++) boxes[n].value = t.charAt(n) || '';
+        (boxes[Math.min(5, t.length)] || boxes[5]).focus();
+        if (t.length >= 6) submitCode();
+      });
+    });
+  })();
+
+  function showPair(why) {
+    document.getElementById('pairErr').textContent = why || '';
+    boxes.forEach(function (b) { b.value = ''; });
+    pairBox.classList.add('show');
+    setTimeout(function () { boxes[0].focus(); }, 50);
+  }
+
+  function submitCode() {
+    var code = boxes.map(function (b) { return b.value; }).join('');
+    if (code.length !== 6) return;
+    var err = document.getElementById('pairErr');
+    err.textContent = 'Checking...';
+    fetch('/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) })
+      .then(function (r) { return r.json(); })
+      .then(function (out) {
+        if (!out.ok) { err.textContent = out.error || 'That code did not work.'; boxes.forEach(function (b) { b.value = ''; }); boxes[0].focus(); return; }
+        TOKEN = out.token || '';
+        store('claude-draw-token', TOKEN || null);
+        err.textContent = '';
+        pairBox.classList.remove('show');
+        boot();
+      })
+      .catch(function (e) { err.textContent = 'Could not reach the daemon: ' + e.message; });
+  }
+  document.getElementById('pairGo').addEventListener('click', submitCode);
+
+  // ---- start -----------------------------------------------------------
+  function boot() {
+    fetch('/state', { headers: headers(), cache: 'no-store' }).then(function (r) {
+      if (r.status === 401) { setLive(false, 'not paired'); return showPair(''); }
+      return r.json().then(function () { connect(); });
+    }).catch(function () {
+      setLive(false, 'offline');
+      setTimeout(boot, 3000);
     });
   }
 
   blankBackground();
   goIdle();
-  connect();
+  boot();
   if (window.Notification && Notification.permission === 'default') {
     document.addEventListener('click', function once() {
       document.removeEventListener('click', once);

@@ -6,7 +6,7 @@ description: Ask the user to draw or annotate something and get it back as an im
 # draw
 
 Hand-drawn input for Claude. A canvas page stays open on whatever device the user likes; you
-push a request to it and block until they answer.
+push a request to it and pick the answer up when it lands.
 
 One-way: they draw, you read it. You cannot draw back into the canvas.
 
@@ -16,19 +16,45 @@ This plugin ships an MCP server. Do not run the daemon by hand.
 
 | Tool | Use |
 |---|---|
-| `request_drawing` | Ask for a sketch or an annotation. Blocks until they answer |
-| `draw_status` | Is the daemon up, is a canvas connected, what are the URLs |
+| `request_drawing` | Ask for a sketch or an annotation |
+| `collect_drawing` | Pick up the answer |
+| `draw_status` | Is the daemon up, is a canvas connected, is anything waiting, what are the URLs |
 | `open_canvas` | Open the canvas in this machine's browser |
 
-`request_drawing(prompt, image_path?, timeout_seconds?, out_dir?)`
+## Asking does not block the conversation
+
+`request_drawing(prompt, image_path?, wait_seconds?, expires_seconds?, out_dir?)`
 
 - `prompt` is required and is shown to the user as "Claude asks: ...".
 - `image_path` seeds an image to annotate. Omit for a blank canvas.
-- Returns the PNG path, the caption, and whether the background was blank or an image.
-  **Read the returned path** to see the drawing.
+- It waits `wait_seconds` (45 by default) and then returns `pending` with a request id.
 
-The daemon starts on the first call and stays running, so the canvas never lands on a dead
-page between requests. The user can leave the tab open all day.
+`pending` is the normal case for anything more than a quick scribble, and it is not a
+failure. The request stays live on the canvas, the user keeps drawing, and **you carry on
+with the conversation**. Do not sit in a loop calling `collect_drawing` while they work, and
+do not re-ask.
+
+`collect_drawing(id?, wait_seconds?)` picks the answer up. Call it when:
+
+- the user says they have sent it, or mentions the drawing at all;
+- you are about to do the thing you asked them to mark up;
+- `draw_status` lists the id under "waiting to be collected".
+
+Answers are kept, so a drawing that arrives while you are doing something else is never lost.
+Collecting twice returns the same result rather than an error.
+
+**Read the returned PNG path** to see the drawing. The caption and the stroke data file come
+back with it.
+
+## Running out of time
+
+A request stays live for 30 minutes by default. Two minutes before that, the canvas asks the
+user whether they are still there and they can push the deadline out with one tap.
+
+If it does lapse, `collect_drawing` returns `timeout`, but nothing is thrown away. The
+request is still on their canvas and whatever they have drawn can still be sent; it just
+arrives with `late: true` and waits for your next `collect_drawing`. So `timeout` means "not
+yet", not "never". Do not re-ask unless the user says they missed it.
 
 ## When to offer it yourself
 
@@ -53,14 +79,18 @@ prompt is your question; the drawing is their answer.
 ## If nobody is watching
 
 `request_drawing` tries to open a browser on this machine when no canvas is connected, which
-is right when the user is sat here and wrong when they are not. If it times out with no canvas
-connected, call `draw_status` and give the user the URL to open. Once open, that tab keeps
-working for every later request, so this is a one-time cost per device.
+is right when the user is sat here and wrong when they are not. It says so in its reply when
+nothing is connected: pass the URLs on. Once a tab is open it keeps working for every later
+request, so this is a one-time cost per device.
 
-`draw_status` also reports whether other devices are allowed to reach the canvas at all. It is
-off by default. If the user wants to draw on a tablet or phone, tell them to set
-`CLAUDE_DRAW_LAN=1` in their Claude Code environment and restart, then read the LAN URL back
-to them.
+`draw_status` reports both URLs and whether other devices are allowed to reach the canvas at
+all. LAN access is off by default; if the user wants to draw on a tablet or phone, tell them
+to set `CLAUDE_DRAW_LAN=1` in their Claude Code environment and restart.
+
+**Other devices pair with a six-digit code.** `draw_status` prints it. Read it out when
+someone is connecting a phone or tablet: they type it into the canvas page once and the
+device is remembered from then on. The code proves they joined this session and not some
+other machine's, so a device that cannot see the code cannot see the prompt.
 
 ## Reading the drawing
 
@@ -89,14 +119,15 @@ red for wrong or remove, green for wanted or add, blue for a note, amber for unc
 
 Pen, line, arrow, box, ellipse, fill, eraser. Six colours. Undo, clear. Keys: `P` `L` `A` `B`
 `O` `F` `E` for tools, `1`-`6` for colour, `[` `]` for size, `Ctrl+Z` undo, `Ctrl+V` paste an
-image, `Ctrl+Enter` send. Picking fill again flips it between stopping at their own marks
-only (`mode: "shape"` in the stroke data) and stopping at edges in the underlying image too
-(`mode: "image"`). Images can also be dropped on the window. Send shows them a preview
-to confirm first, so a submitted drawing is always deliberate. "Skip" tells you they are not
-answering this one.
+image, `Ctrl+Enter` send.
+
+Picking fill again flips it between stopping at their own marks only (`mode: "shape"` in the
+stroke data) and stopping at edges in the underlying image too (`mode: "image"`). Images can
+also be dropped on the window. Send shows them a preview to confirm first, so a submitted
+drawing is always deliberate. "Skip" tells you they are not answering this one.
 
 **They can ask you for a screenshot.** The canvas has a "Send me a screenshot" button, and
-`request_drawing` then returns a `want_screenshot` outcome instead of an image. That is not a
+collecting then returns a `want_screenshot` outcome instead of an image. That is not a
 refusal: capture or find the image they mean, then call `request_drawing` again with
 `image_path` set to it. Anything they typed in the caption box comes back as the note saying
 what they want a picture of. Do it immediately; they are sat on the canvas waiting.
@@ -111,7 +142,10 @@ what they want a picture of. Do it immediately; they are sat on the canvas waiti
 - Touch input is ignored on purpose, so a resting palm cannot draw. Pen and mouse only.
 - Pressure works on real pen hardware. Cheap tablets often report as a mouse with pressure
   pinned at 0.5; the canvas falls back to a fixed line width and that is fine.
-- The daemon binds loopback only unless `CLAUDE_DRAW_LAN` is set. When it is, only drawing is
-  exposed: `request_drawing` and shutdown stay loopback-only, so a device on the network can
-  answer questions but cannot drive the session.
-- Requests queue. Asking twice before the first is answered is safe.
+- The daemon binds loopback only unless `CLAUDE_DRAW_LAN` is set. When it is, other devices
+  pair with the code, and only loopback can create a request or shut the daemon down: a paired
+  device can answer questions but cannot drive the session.
+- The canvas reconnects itself if the network drops or a phone backgrounds the tab, and it
+  keeps whatever was drawn across the reconnect.
+- Requests queue. Asking twice before the first is answered is safe, but prefer one question
+  at a time: only the front of the queue is on screen.
