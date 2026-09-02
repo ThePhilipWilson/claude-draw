@@ -158,13 +158,18 @@ Blank sketches and annotations fail in different ways:
   deliberate handwriting from scribble.
 
 Colour convention the user may lean on, worth reading as meaningful when it fits:
-red for wrong or remove, green for wanted or add, blue for a note, amber for uncertain.
+red for wrong or remove, green for wanted or add, blue for a note, amber for uncertain. They
+can also pick any colour they like, so do not assume a mark is one of the six defaults.
 
 ## The canvas
 
-Pen, line, arrow, box, ellipse, fill, eraser. Six colours. Undo, clear. Keys: `P` `L` `A` `B`
-`O` `F` `E` for tools, `1`-`6` for colour, `[` `]` for size, `Ctrl+Z` undo, `Ctrl+V` paste an
-image, `Ctrl+Enter` send.
+Pen, line, arrow, box, ellipse, fill, eraser. Six preset colours plus a colour picker. Undo,
+clear. Dark, light and pink themes.
+
+Keys: `P` `L` `A` `B` `O` `F` `E` for tools, `1`-`6` for a preset colour, `7` for the picked
+one, `[` `]` for size, `T` for theme, `Ctrl+Z` undo, `Ctrl+V` paste an image, `Enter` or
+`Ctrl+Enter` to send. The caption box takes several lines: `Shift+Enter` or a trailing
+backslash gives a new line.
 
 Picking fill again flips it between stopping at their own marks only (`mode: "shape"` in the
 stroke data) and stopping at edges in the underlying image too (`mode: "image"`). Images can

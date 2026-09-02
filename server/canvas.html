@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Canvas for Claude</title>
 <style>
-  /* Every colour in the page comes from here, so the palette is one block. */
+  /* Dark is the default. Light and pink redefine the same tokens and nothing else,
+     so a new theme is one block and never a second set of rules to keep in step. */
   :root {
     --bg: #1b1d21; --panel: #24272c; --edge: #34383f;
     --text: #e6e8ea; --muted: #9aa0a8; --accent: #d97757; --onAccent: #1b1d21;
@@ -14,6 +15,23 @@
     --paper: #ffffff; --shadow: rgba(0,0,0,.5); --veil: rgba(12,13,15,.82);
     --good: #4ade80; --bad: #f87171; --onGood: #10261a;
   }
+  html[data-theme="light"] {
+    --bg: #f4f5f7; --panel: #ffffff; --edge: #d8dce2;
+    --text: #1b1d21; --muted: #6b7280; --accent: #c2410c; --onAccent: #ffffff;
+    --btn: #eef0f3; --btnHover: #e3e7ec;
+    --askBg: #fff3ec; --askEdge: #f0d3c1; --askText: #7c3d1d;
+    --paper: #ffffff; --shadow: rgba(20,24,32,.16); --veil: rgba(244,245,247,.86);
+    --good: #15803d; --bad: #b91c1c; --onGood: #ffffff;
+  }
+  html[data-theme="pink"] {
+    --bg: #fff1f6; --panel: #ffe1ed; --edge: #f5bcd5;
+    --text: #4a1030; --muted: #a3577c; --accent: #db2777; --onAccent: #ffffff;
+    --btn: #ffd3e4; --btnHover: #ffc2da;
+    --askBg: #ffe9f2; --askEdge: #f3aecb; --askText: #8a1d51;
+    --paper: #ffffff; --shadow: rgba(190,60,120,.22); --veil: rgba(255,241,246,.88);
+    --good: #15803d; --bad: #be123c; --onGood: #ffffff;
+  }
+
   * { box-sizing: border-box; }
   html, body {
     margin: 0; height: 100%; overflow: hidden;
@@ -37,7 +55,7 @@
 
   .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
     background: var(--panel); border-bottom: 1px solid var(--edge); flex: 0 0 auto; flex-wrap: wrap; }
-  .bar.bottom { border-bottom: none; border-top: 1px solid var(--edge); }
+  .bar.bottom { border-bottom: none; border-top: 1px solid var(--edge); align-items: flex-end; }
 
   button { font: inherit; color: var(--text); background: var(--btn); border: 1px solid var(--edge);
     border-radius: 6px; padding: 7px 12px; cursor: pointer; min-height: 38px; }
@@ -48,6 +66,14 @@
 
   .swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid var(--edge); min-height: 0; }
   .swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
+  /* The picker is a swatch that happens to open the OS colour dialog. */
+  #pick { width: 30px; height: 30px; padding: 0; border: 2px solid var(--edge); border-radius: 50%;
+    background: none; cursor: pointer; overflow: hidden; -webkit-appearance: none; appearance: none; }
+  #pick::-webkit-color-swatch-wrapper { padding: 0; }
+  #pick::-webkit-color-swatch { border: none; border-radius: 50%; }
+  #pick::-moz-color-swatch { border: none; border-radius: 50%; }
+  #pick.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--accent); }
+
   .sep { width: 1px; height: 26px; background: var(--edge); margin: 0 4px; }
   .spacer { flex: 1 1 auto; }
   .hint { color: var(--muted); font-size: 12px; }
@@ -72,7 +98,9 @@
   #drop.show { display: flex; }
 
   #caption { flex: 1 1 320px; min-width: 200px; font: inherit; color: var(--text);
-    background: var(--btn); border: 1px solid var(--edge); border-radius: 6px; padding: 9px 11px; min-height: 38px; }
+    background: var(--btn); border: 1px solid var(--edge); border-radius: 6px; padding: 9px 11px;
+    min-height: 38px; max-height: 128px; resize: none; overflow-y: auto; line-height: 1.35;
+    -webkit-user-select: text; user-select: text; }
   #caption::placeholder { color: var(--muted); }
   #send { background: var(--accent); border-color: var(--accent); color: var(--onAccent); font-weight: 600; padding: 9px 20px; }
   #send:hover { filter: brightness(1.08); }
@@ -105,7 +133,7 @@
   #confirm .shot { flex: 1 1 auto; min-height: 0; display: flex; justify-content: center;
     background: var(--bg); border: 1px solid var(--edge); border-radius: 6px; padding: 8px; }
   #confirm img { max-width: 100%; max-height: 46vh; object-fit: contain; }
-  #confirmCap { margin: 0; color: var(--muted); font-size: 13px; word-break: break-word; }
+  #confirmCap { margin: 0; color: var(--muted); font-size: 13px; word-break: break-word; white-space: pre-wrap; }
   #confirmCap.none { font-style: italic; }
   #confirmGo { background: var(--accent); border-color: var(--accent); color: var(--onAccent); font-weight: 600; padding: 9px 22px; }
 
@@ -147,10 +175,12 @@
   <button id="sizeUp" title="Thicker (])">+</button>
   <div class="sep"></div>
   <span id="colours"></span>
+  <input type="color" id="pick" value="#ff7a00" title="Pick any colour (7)">
   <div class="sep"></div>
   <button id="undo" title="Undo (Ctrl+Z)">Undo</button>
   <button id="clear" title="Clear all marks">Clear</button>
   <div class="spacer"></div>
+  <button id="theme" title="Dark, light or pink (T)">Dark</button>
   <span id="dot" title="connection"></span>
   <span class="hint" id="hint">connecting</span>
 </div>
@@ -169,7 +199,7 @@
 </div>
 
 <div class="bar bottom">
-  <input id="caption" placeholder="What is this? e.g. red box is the bit that should move">
+  <textarea id="caption" rows="1" placeholder="What is this? e.g. red box is the bit that should move    (Shift+Enter for a new line)"></textarea>
   <button id="send">Send to Claude</button>
   <button id="shot" title="Ask Claude to send a screenshot to annotate">Send me a screenshot</button>
   <button id="cancel" title="Skip this request">Skip</button>
@@ -233,6 +263,21 @@
   function store(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
   function stored(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 
+  // ---- theme -----------------------------------------------------------
+  var THEMES = ['dark', 'light', 'pink'];
+  var themeBtn = document.getElementById('theme');
+  function setTheme(t) {
+    if (THEMES.indexOf(t) === -1) t = 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    themeBtn.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+    store('claude-draw-theme', t);
+  }
+  themeBtn.addEventListener('click', function () {
+    var i = THEMES.indexOf(document.documentElement.getAttribute('data-theme'));
+    setTheme(THEMES[(i + 1) % THEMES.length]);
+  });
+  setTheme(stored('claude-draw-theme') || 'dark');
+
   // ---- talking to the daemon -------------------------------------------
   // A device that is not on loopback pairs once and keeps the token, so this is the
   // only place that has to care whether we are local or on someone's phone.
@@ -294,9 +339,19 @@
 
   // ---- palette / tools -------------------------------------------------
   var colourBox = document.getElementById('colours');
+  var picker = document.getElementById('pick');
+  function markPicked(i) {
+    [].forEach.call(colourBox.children, function (el, n) { el.classList.toggle('on', n === i); });
+    picker.classList.toggle('on', i === -1);
+  }
   function pickColour(i) {
     state.colour = COLOURS[i];
-    [].forEach.call(colourBox.children, function (el, n) { el.classList.toggle('on', n === i); });
+    markPicked(i);
+  }
+  function pickCustom() {
+    state.colour = picker.value;
+    markPicked(-1);
+    if (state.tool === 'eraser') setTool('pen');
   }
   COLOURS.forEach(function (c, i) {
     var b = document.createElement('button');
@@ -305,6 +360,9 @@
     b.addEventListener('click', function () { pickColour(i); if (state.tool === 'eraser') setTool('pen'); });
     colourBox.appendChild(b);
   });
+  picker.value = stored('claude-draw-custom') || '#ff7a00';
+  picker.addEventListener('input', function () { store('claude-draw-custom', picker.value); pickCustom(); });
+  picker.addEventListener('click', function () { pickCustom(); });
 
   var TOOLS = { pen: 'tPen', line: 'tLine', arrow: 'tArrow', box: 'tBox', ellipse: 'tEllipse', fill: 'tFill', eraser: 'tEraser' };
   // Tools that drag out a shape between two points, previewed live.
@@ -604,7 +662,7 @@
     document.getElementById('idleText').textContent = text ||
       'This page stays open. When Claude asks for a sketch or sends something to annotate, it appears here automatically.';
     idle.classList.remove('hide');
-    captionEl.value = '';
+    setCaption('');
     resetSend();
     hint.textContent = 'idle';
   }
@@ -629,7 +687,7 @@
     if (expired) showNudge('Claude stopped waiting for this one. Your drawing is safe: send it and Claude will pick it up next time it checks.', true);
     else hideNudge();
     if (resuming) { idle.classList.add('hide'); return; }
-    captionEl.value = '';
+    setCaption('');
     resetSend();
     var reveal = function () { idle.classList.add('hide'); setTimeout(fit, 30); };
     if (req.image) { useImage(tokened(req.image + '?t=' + Date.now()), 'seeded', reveal); }
@@ -663,6 +721,36 @@
     o.drawImage(bg, 0, 0); o.drawImage(board, 0, 0);
     return out.toDataURL('image/png');
   }
+
+  // ---- caption ---------------------------------------------------------
+  function setCaption(v) {
+    captionEl.value = v;
+    autogrow();
+  }
+  function autogrow() {
+    captionEl.style.height = 'auto';
+    captionEl.style.height = Math.min(128, Math.max(38, captionEl.scrollHeight)) + 'px';
+  }
+  captionEl.addEventListener('input', autogrow);
+
+  // Enter sends, the way it does in Claude Code. Shift+Enter and a trailing backslash
+  // both give a new line instead.
+  captionEl.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    if (e.shiftKey || e.altKey) return;                       // browser inserts the newline
+    e.stopPropagation();                                       // the window handler must not see this
+    if (e.ctrlKey || e.metaKey) { e.preventDefault(); return openConfirm(); }
+    var v = captionEl.value, s = captionEl.selectionStart;
+    if (s > 0 && s === captionEl.selectionEnd && v.charAt(s - 1) === '\\') {
+      e.preventDefault();
+      captionEl.value = v.slice(0, s - 1) + '\n' + v.slice(s);
+      captionEl.selectionStart = captionEl.selectionEnd = s;
+      autogrow();
+      return;
+    }
+    e.preventDefault();
+    openConfirm();
+  });
 
   // ---- confirm before sending -----------------------------------------
   var confirmBox = document.getElementById('confirm');
@@ -753,9 +841,11 @@
     if (k === 'o') setTool('ellipse');
     if (k === 'f') setTool('fill');
     if (k === 'e') setTool('eraser');
+    if (k === 't') themeBtn.click();
     if (e.key === '[') setSize(state.size - 1);
     if (e.key === ']') setSize(state.size + 1);
     if (k >= '1' && k <= '6') pickColour(parseInt(k, 10) - 1);
+    if (k === '7') pickCustom();
   });
 
   // ---- live connection -------------------------------------------------
@@ -923,6 +1013,7 @@
 
   blankBackground();
   goIdle();
+  autogrow();
   boot();
   if (window.Notification && Notification.permission === 'default') {
     document.addEventListener('click', function once() {

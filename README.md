@@ -57,9 +57,14 @@ drawn can still be sent: Claude collects it late rather than never.
 
 ## The canvas
 
-Pen, line, arrow, box, ellipse, fill and eraser, in six colours. Keys: `P` `L` `A` `B` `O`
-`F` `E` for tools, `1`-`6` for colour, `[` `]` for size, `Ctrl+Z` undo, `Ctrl+V` to paste an
-image, `Ctrl+Enter` to send. Images can also be dropped on the window.
+Pen, line, arrow, box, ellipse, fill and eraser, in six colours plus anything you pick
+yourself. Dark, light and pink themes, remembered per device. Keys: `P` `L` `A` `B` `O` `F`
+`E` for tools, `1`-`6` for a preset colour, `7` for the one you picked, `[` `]` for size, `T`
+to change theme, `Ctrl+Z` undo, `Ctrl+V` to paste an image, `Enter` or `Ctrl+Enter` to send.
+Images can also be dropped on the window.
+
+The caption box takes as many lines as you want: `Shift+Enter` starts a new one, and so does a
+backslash at the end of a line, the same as Claude Code. `Enter` on its own sends.
 
 Fill has two ideas of an edge, and picking the tool again flips between them. **Fill: shape**
 stops only at your own marks, so an outline you drew fills solid in one tap whatever is
