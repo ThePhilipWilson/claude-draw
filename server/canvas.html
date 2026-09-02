@@ -76,7 +76,11 @@
 
   .sep { width: 1px; height: 26px; background: var(--edge); margin: 0 4px; }
   .spacer { flex: 1 1 auto; }
-  .hint { color: var(--muted); font-size: 12px; }
+  /* Fixed width: the connection state cycles between "offline" and "reconnecting" on
+     its own, and a status that resizes drags the dot and the rest of the bar with it.
+     Wide enough for the longest message it shows ("annotating 1600x1600"). */
+  .hint { color: var(--muted); font-size: 12px; flex: 0 0 auto; width: 20ch;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #sizeLabel { color: var(--muted); min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; }
 
   #dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); flex: 0 0 auto; }
