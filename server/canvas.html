@@ -33,9 +33,13 @@
     --askBg: #f6e7ff; --askEdge: #d9a6f5; --askText: #5c1176;
     --paper: #ffffff; --shadow: rgba(214,0,110,.28); --veil: rgba(255,236,246,.9);
     --good: #0ea87a; --bad: #e11d48; --onGood: #ffffff;
+    /* Inline so the page stays one file with no request to make. No "#" anywhere in
+       the markup: it would need escaping inside a url(). */
+    --heart: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 22"><path d="M12 21S2 14.6 2 8.6C2 5.2 4.5 3 7.3 3 9.2 3 10.9 4 12 5.6 13.1 4 14.8 3 16.7 3 19.5 3 22 5.2 22 8.6 22 14.6 12 21 12 21z" fill="black"/></svg>');
   }
   html[data-theme="pink"] body {
     background: linear-gradient(160deg, #fff0f7 0%, #ffe4f3 45%, #f3e7ff 100%);
+    font-family: "Segoe UI Variable Text", ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
   }
   html[data-theme="pink"] button { border-radius: 999px; }
   html[data-theme="pink"] .code input { border-radius: 14px; }
@@ -50,8 +54,47 @@
     border-color: #cf006b; box-shadow: 0 2px 10px rgba(214,0,110,.35);
   }
   html[data-theme="pink"] .bar { background: linear-gradient(180deg, #ffe6f4 0%, #ffdcee 100%); }
-  html[data-theme="pink"] #ask b { color: #9333ea; }
   html[data-theme="pink"] .pulse i { background: #ff4fa8; }
+  /* Pink to purple across the two words Claude gets to say. */
+  html[data-theme="pink"] #ask b {
+    background: linear-gradient(90deg, #d6006e 0%, #9333ea 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  /* The connection light is a heart. Masked, so it still takes its colour from the
+     good/bad tokens and nothing about the live/dead logic changes. */
+  html[data-theme="pink"] #dot {
+    width: 13px; height: 12px; border-radius: 0;
+    -webkit-mask-image: var(--heart); mask-image: var(--heart);
+    -webkit-mask-size: contain; mask-size: contain;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+    -webkit-mask-position: center; mask-position: center;
+  }
+  html[data-theme="pink"] .swatch.on,
+  html[data-theme="pink"] #pick.on { box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--accent); }
+  html[data-theme="pink"] #wrap { box-shadow: 0 0 0 3px #ffb3dd, 0 8px 28px var(--shadow); }
+  html[data-theme="pink"] #caption { scrollbar-width: thin; scrollbar-color: #ff9fcf transparent; }
+  html[data-theme="pink"] #flash::after { content: " ✨"; }
+  /* Two sparkles loitering on the waiting screen. */
+  html[data-theme="pink"] #idle::before,
+  html[data-theme="pink"] #idle::after {
+    content: "✨"; position: absolute; font-size: 22px; opacity: .5; pointer-events: none;
+  }
+  html[data-theme="pink"] #idle::before { top: 22%; left: 20%; }
+  html[data-theme="pink"] #idle::after { bottom: 24%; right: 22%; font-size: 16px; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html[data-theme="pink"] button {
+      transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+    }
+    html[data-theme="pink"] button:hover:not(:disabled) { transform: translateY(-1px) scale(1.02); }
+    html[data-theme="pink"] button:active:not(:disabled) { transform: translateY(0) scale(.97); }
+    html[data-theme="pink"] #idle::before { animation: twinkle 3.4s ease-in-out infinite; }
+    html[data-theme="pink"] #idle::after { animation: twinkle 2.6s ease-in-out .7s infinite; }
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: .25; transform: scale(.85) rotate(-8deg); }
+    50%      { opacity: 1;   transform: scale(1.12) rotate(8deg); }
+  }
 
   * { box-sizing: border-box; }
   html, body {
