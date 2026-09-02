@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Canvas for Claude</title>
 <style>
-  /* Dark is the default. Light and pink redefine the same tokens and nothing else,
-     so a new theme is one block and never a second set of rules to keep in step. */
+  /* Dark is the default. Every colour in the page comes from these tokens, so a theme
+     is one block of overrides and never a second set of rules to keep in step. */
   :root {
     --bg: #1b1d21; --panel: #24272c; --edge: #34383f;
     --text: #e6e8ea; --muted: #9aa0a8; --accent: #d97757; --onAccent: #1b1d21;
@@ -23,14 +23,35 @@
     --paper: #ffffff; --shadow: rgba(20,24,32,.16); --veil: rgba(244,245,247,.86);
     --good: #15803d; --bad: #b91c1c; --onGood: #ffffff;
   }
+  /* Pink is the one theme that does more than swap tokens. Hot pink on bubblegum,
+     lilac for anything Claude says, everything rounded off, and a candy wash behind
+     the lot. The extra rules are scoped to the theme so no other palette sees them. */
   html[data-theme="pink"] {
-    --bg: #fff1f6; --panel: #ffe1ed; --edge: #f5bcd5;
-    --text: #4a1030; --muted: #a3577c; --accent: #db2777; --onAccent: #ffffff;
-    --btn: #ffd3e4; --btnHover: #ffc2da;
-    --askBg: #ffe9f2; --askEdge: #f3aecb; --askText: #8a1d51;
-    --paper: #ffffff; --shadow: rgba(190,60,120,.22); --veil: rgba(255,241,246,.88);
-    --good: #15803d; --bad: #be123c; --onGood: #ffffff;
+    --bg: #fff0f7; --panel: #ffdcee; --edge: #ff9fcf;
+    --text: #3d0a26; --muted: #a3437c; --accent: #d6006e; --onAccent: #ffffff;
+    --btn: #ffd0e8; --btnHover: #ffb8dd;
+    --askBg: #f6e7ff; --askEdge: #d9a6f5; --askText: #5c1176;
+    --paper: #ffffff; --shadow: rgba(214,0,110,.28); --veil: rgba(255,236,246,.9);
+    --good: #0ea87a; --bad: #e11d48; --onGood: #ffffff;
   }
+  html[data-theme="pink"] body {
+    background: linear-gradient(160deg, #fff0f7 0%, #ffe4f3 45%, #f3e7ff 100%);
+  }
+  html[data-theme="pink"] button { border-radius: 999px; }
+  html[data-theme="pink"] .code input { border-radius: 14px; }
+  /* Not a pill: this one grows to several lines. */
+  html[data-theme="pink"] #caption { border-radius: 18px; padding: 9px 16px; }
+  html[data-theme="pink"] .modal .sheet { border-radius: 22px; }
+  html[data-theme="pink"] #wrap { border-radius: 14px; }
+  html[data-theme="pink"] button.on,
+  html[data-theme="pink"] #send,
+  html[data-theme="pink"] #confirmGo {
+    background: linear-gradient(135deg, #f5217f 0%, #cf006b 100%);
+    border-color: #cf006b; box-shadow: 0 2px 10px rgba(214,0,110,.35);
+  }
+  html[data-theme="pink"] .bar { background: linear-gradient(180deg, #ffe6f4 0%, #ffdcee 100%); }
+  html[data-theme="pink"] #ask b { color: #9333ea; }
+  html[data-theme="pink"] .pulse i { background: #ff4fa8; }
 
   * { box-sizing: border-box; }
   html, body {
@@ -82,6 +103,9 @@
   .hint { color: var(--muted); font-size: 12px; flex: 0 0 auto; width: 20ch;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #sizeLabel { color: var(--muted); min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; }
+
+  /* Fixed too, for the same reason: the label changes with the theme. */
+  #theme { min-width: 94px; }
 
   #dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); flex: 0 0 auto; }
   #dot.live { background: var(--good); }
@@ -270,11 +294,12 @@
 
   // ---- theme -----------------------------------------------------------
   var THEMES = ['dark', 'light', 'pink'];
+  var THEME_LABEL = { dark: 'Dark', light: 'Light', pink: 'Pink ✨' };
   var themeBtn = document.getElementById('theme');
   function setTheme(t) {
     if (THEMES.indexOf(t) === -1) t = 'dark';
     document.documentElement.setAttribute('data-theme', t);
-    themeBtn.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+    themeBtn.textContent = THEME_LABEL[t];
     store('claude-draw-theme', t);
   }
   themeBtn.addEventListener('click', function () {
