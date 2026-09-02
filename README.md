@@ -58,7 +58,8 @@ drawn can still be sent: Claude collects it late rather than never.
 ## The canvas
 
 Pen, line, arrow, box, ellipse, fill and eraser, in six colours plus anything you pick
-yourself. Dark, light and pink themes, remembered per device. Keys: `P` `L` `A` `B` `O` `F`
+yourself. Dark, light and pink themes, remembered per device. In pink the colour swatches are
+love hearts, and picking Ellipse a second time flips it to a heart shape. Keys: `P` `L` `A` `B` `O` `F`
 `E` for tools, `1`-`6` for a preset colour, `7` for the one you picked, `[` `]` for size, `T`
 to change theme, `Ctrl+Z` undo, `Ctrl+V` to paste an image, `Enter` or `Ctrl+Enter` to send.
 Images can also be dropped on the window.

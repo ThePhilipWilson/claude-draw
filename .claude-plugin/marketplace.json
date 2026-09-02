@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Hand-drawn input for Claude Code.",
-    "version": "1.1.0"
+    "version": "1.3.0"
   },
   "plugins": [
     {
       "name": "claude-draw",
       "source": "./",
       "description": "Hand-drawn input for Claude. A persistent canvas you open on any device, so Claude can ask you to sketch an idea or annotate a screenshot and get the answer back as an image.",
-      "version": "1.1.0",
+      "version": "1.3.0",
       "author": { "name": "Philip Wilson" },
       "license": "MIT",
       "keywords": ["drawing", "annotation", "sketch", "stylus", "screenshot", "canvas"]

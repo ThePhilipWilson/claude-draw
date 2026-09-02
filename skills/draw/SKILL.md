@@ -131,9 +131,10 @@ Notes on reading it:
 
 - **Colour is under both `colour` and `color`.** Same value, spelled both ways, so you never
   have to guess which one this file uses.
-- `tool` is one of `pen`, `line`, `arrow`, `box`, `ellipse`, `fill`, `eraser`.
+- `tool` is one of `pen`, `line`, `arrow`, `box`, `ellipse`, `heart`, `fill`, `eraser`.
 - `pen` and `eraser` strokes have `points` (with `p` for pen pressure); `line`, `arrow`, `box`
-  and `ellipse` have `from` and `to`; `fill` has `at` and a `mode` of `shape` or `image`.
+  `ellipse` and `heart` have `from` and `to`; `fill` has `at` and a `mode` of `shape` or `image`.
+- `heart` is drawn in the box between `from` and `to`, the same way `ellipse` is.
 - Coordinates are in canvas pixels, origin top-left, matching the PNG exactly.
 - A caption is also appended to `log.jsonl` in the same directory as each drawing lands, so it
   survives even if the reply never reaches you.
@@ -164,7 +165,8 @@ can also pick any colour they like, so do not assume a mark is one of the six de
 ## The canvas
 
 Pen, line, arrow, box, ellipse, fill, eraser. Six preset colours plus a colour picker. Undo,
-clear. Dark, light and pink themes.
+clear. Dark, light and pink themes. In pink the swatches are love hearts and picking Ellipse
+again flips it to a heart shape; the strokes come back as `tool: "heart"` whatever the theme.
 
 Keys: `P` `L` `A` `B` `O` `F` `E` for tools, `1`-`6` for a preset colour, `7` for the picked
 one, `[` `]` for size, `T` for theme, `Ctrl+Z` undo, `Ctrl+V` paste an image, `Enter` or
